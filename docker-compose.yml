@@ -1,0 +1,8 @@
+services:
+  snowflake-llm:
+    build: .
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    command: python financial_analyzer.py
