@@ -9,7 +9,7 @@
 import argparse
 import sys
 
-from src.common import COMPANY_CODES, Config
+from src.common import COMPANY_CODES, PROPOSAL_MAX_CHARS, Config
 from src.proposal import ContextBuilder, SectionGenerator, DocxWriter
 
 
@@ -52,8 +52,11 @@ def process_company(company_code: str, config: Config) -> bool:
     # 文字数チェック
     char_count = docx_writer.count_characters(company_code, company_info, sections)
     print(f"\n提案書文字数: {char_count:,}字")
-    if char_count > 15000:
-        print(f"警告: 文字数が15,000字を超えています（{char_count}字）")
+    if char_count > PROPOSAL_MAX_CHARS:
+        raise ValueError(
+            f"文字数が{PROPOSAL_MAX_CHARS:,}字を超過しています（{char_count:,}字）。"
+            f"超過: {char_count - PROPOSAL_MAX_CHARS:,}字"
+        )
 
     # 保存
     docx_path = docx_writer.save_docx(company_code, company_info, sections)

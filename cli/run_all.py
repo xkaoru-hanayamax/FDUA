@@ -13,7 +13,7 @@ import argparse
 from datetime import datetime
 from pathlib import Path
 
-from src.common import COMPANY_CODES, Config
+from src.common import COMPANY_CODES, PROPOSAL_MAX_CHARS, Config
 from src.financial import FinancialAnalyzer
 from src.vectordb import VectorDBIndexer
 from src.rag import RAGSummarizer
@@ -139,6 +139,13 @@ def run_all(config: Config, force_reindex: bool = False) -> dict:
 
             char_count = docx_writer.count_characters(code, company_info, sections)
             print(f"  文字数: {char_count:,}字")
+
+            # 文字数超過チェック
+            if char_count > PROPOSAL_MAX_CHARS:
+                raise ValueError(
+                    f"文字数が{PROPOSAL_MAX_CHARS:,}字を超過しています（{char_count:,}字）。"
+                    f"超過: {char_count - PROPOSAL_MAX_CHARS:,}字"
+                )
 
             docx_writer.save_docx(code, company_info, sections)
             results[code]["proposal"] = "成功"

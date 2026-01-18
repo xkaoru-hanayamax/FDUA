@@ -56,3 +56,16 @@ DEFAULT_CROSS_REGION = "AWS_APJ"
 # チャンク設定
 DEFAULT_CHUNK_SIZE = 1200
 DEFAULT_CHUNK_OVERLAP = 200
+
+# 提案書文字数制限
+PROPOSAL_MAX_CHARS = 15000
+
+# セクション別文字数上限（厳格）
+# 合計: 11,900字 + ヘッダー等600字 = 約12,500字（余裕2,500字）
+SECTION_CHAR_LIMITS = {
+    "overview": 2800,   # 企業概要・分析
+    "issues": 2300,     # 課題の抽出
+    "strategy": 3200,   # 成長戦略・提案
+    "effects": 1800,    # 効果試算
+    "roadmap": 1800,    # ロードマップ
+}
