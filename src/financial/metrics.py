@@ -82,38 +82,114 @@ def _format_number(n: Optional[float]) -> str:
 
 def format_metrics_for_llm(metrics: dict) -> str:
     """
-    LLMに渡すためのテキスト形式に整形
+    LLMに渡すためのMarkdown形式に整形
 
     Args:
         metrics: calculate_metrics()で算出した財務指標
 
     Returns:
-        整形されたテキスト
+        整形されたMarkdownテキスト
     """
-    text = f"""
-【企業基本情報】
-- コード: {metrics['コード']}
-- 所在地: {metrics['所在地']}
-- 業種: {metrics['業種']}
-- 従業員数: {metrics['従業員数']}名
-- 資本金: {metrics['資本金_億円']}億円
+    years = metrics['年度']
 
-【損益計算書（PL）3年推移】
-年度: {metrics['年度']}
-売上高: {[_format_number(x) for x in metrics['売上高']]}
-売上高成長率: {metrics['売上高成長率']}%
-営業利益: {[_format_number(x) for x in metrics['営業利益']]}
-営業利益率: {metrics['営業利益率']}%
-当期純利益: {[_format_number(x) for x in metrics['当期純利益']]}
+    # 計算済み指標のMarkdownテーブル
+    text = f"""## 企業基本情報
 
-【貸借対照表（BS）】
-総資産: {[_format_number(x) for x in metrics['総資産']]}
-純資産: {[_format_number(x) for x in metrics['純資産']]}
-自己資本比率: {metrics['自己資本比率']}%
+| 項目 | 値 |
+|------|-----|
+| コード | {metrics['コード']} |
+| 所在地 | {metrics['所在地']} |
+| 業種 | {metrics['業種']} |
+| 従業員数 | {metrics['従業員数']}名 |
+| 資本金 | {metrics['資本金_億円']}億円 |
 
-【キャッシュフロー（CF）】
-営業CF: {[_format_number(x) for x in metrics['営業CF']]}
-投資CF: {[_format_number(x) for x in metrics['投資CF']]}
-財務CF: {[_format_number(x) for x in metrics['財務CF']]}
+## 財務指標（3年推移）
+
+### 損益計算書（PL）
+
+| 指標 | {years[0]} | {years[1]} | {years[2]} |
+|------|------------|------------|------------|
+| 売上高 | {_format_number(metrics['売上高'][0])} | {_format_number(metrics['売上高'][1])} | {_format_number(metrics['売上高'][2])} |
+| 売上高成長率 | - | {metrics['売上高成長率'][1]}% | {metrics['売上高成長率'][2]}% |
+| 営業利益 | {_format_number(metrics['営業利益'][0])} | {_format_number(metrics['営業利益'][1])} | {_format_number(metrics['営業利益'][2])} |
+| 営業利益率 | {metrics['営業利益率'][0]}% | {metrics['営業利益率'][1]}% | {metrics['営業利益率'][2]}% |
+| 当期純利益 | {_format_number(metrics['当期純利益'][0])} | {_format_number(metrics['当期純利益'][1])} | {_format_number(metrics['当期純利益'][2])} |
+
+### 貸借対照表（BS）
+
+| 指標 | {years[0]} | {years[1]} | {years[2]} |
+|------|------------|------------|------------|
+| 総資産 | {_format_number(metrics['総資産'][0])} | {_format_number(metrics['総資産'][1])} | {_format_number(metrics['総資産'][2])} |
+| 純資産 | {_format_number(metrics['純資産'][0])} | {_format_number(metrics['純資産'][1])} | {_format_number(metrics['純資産'][2])} |
+| 自己資本比率 | {metrics['自己資本比率'][0]}% | {metrics['自己資本比率'][1]}% | {metrics['自己資本比率'][2]}% |
+
+### キャッシュフロー（CF）
+
+| 指標 | {years[0]} | {years[1]} | {years[2]} |
+|------|------------|------------|------------|
+| 営業CF | {_format_number(metrics['営業CF'][0])} | {_format_number(metrics['営業CF'][1])} | {_format_number(metrics['営業CF'][2])} |
+| 投資CF | {_format_number(metrics['投資CF'][0])} | {_format_number(metrics['投資CF'][1])} | {_format_number(metrics['投資CF'][2])} |
+| 財務CF | {_format_number(metrics['財務CF'][0])} | {_format_number(metrics['財務CF'][1])} | {_format_number(metrics['財務CF'][2])} |
 """
     return text
+
+
+def format_raw_data_as_markdown(company_df: pd.DataFrame) -> str:
+    """
+    財務データの生データをMarkdownテーブルに変換
+
+    Args:
+        company_df: 企業の財務データDataFrame
+
+    Returns:
+        Markdownテーブル形式のテキスト
+    """
+    # 主要な列を選択（LLMが参照しやすい項目）
+    key_columns = [
+        "YEAR",
+        "売上高", "営業利益", "経常利益", "当期純利益",
+        "総資産", "純資産",
+        "営業活動によるキャッシュ・フロー",
+        "投資活動によるキャッシュ・フロー",
+        "財務活動によるキャッシュ・フロー",
+        "現金及び現金同等物期末残高",
+        "売上高_完成工事高", "売上高_不動産事業売上高", "売上高_商品売上高",
+        "売上原価_完成工事原価",
+        "販売費及び一般管理費",
+        "有形固定資産",
+        "流動資産", "流動負債",
+        "固定負債_長期借入金",
+    ]
+
+    # 存在する列のみ抽出
+    available_columns = [col for col in key_columns if col in company_df.columns]
+    subset_df = company_df[available_columns].copy()
+
+    # 列名を短縮
+    rename_map = {
+        "YEAR": "年度",
+        "営業活動によるキャッシュ・フロー": "営業CF",
+        "投資活動によるキャッシュ・フロー": "投資CF",
+        "財務活動によるキャッシュ・フロー": "財務CF",
+        "現金及び現金同等物期末残高": "現金残高",
+        "売上高_完成工事高": "完成工事高",
+        "売上高_不動産事業売上高": "不動産売上",
+        "売上高_商品売上高": "商品売上",
+        "売上原価_完成工事原価": "工事原価",
+        "販売費及び一般管理費": "販管費",
+        "固定負債_長期借入金": "長期借入金",
+    }
+    subset_df = subset_df.rename(columns=rename_map)
+
+    # 数値をフォーマット
+    for col in subset_df.columns:
+        if col != "年度":
+            subset_df[col] = subset_df[col].apply(
+                lambda x: _format_number(x) if pd.notna(x) else "-"
+            )
+
+    # Markdownテーブルに変換
+    markdown = "## 財務データ（生データ抜粋）\n\n"
+    markdown += subset_df.to_markdown(index=False)
+
+    return markdown

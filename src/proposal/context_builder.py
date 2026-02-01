@@ -1,13 +1,13 @@
 """
 コンテキスト構築モジュール
 
-財務分析結果と有価証券報告書（Markdown形式）を統合してLLMに渡すコンテキストを構築
+財務分析結果（Markdown）と有価証券報告書（Markdown）を統合してLLMに渡すコンテキストを構築
 """
 
 from typing import Optional
 
 from ..common.config import Config, default_config
-from ..financial import load_financial_data, get_company_data, calculate_metrics, format_metrics_for_llm
+from ..financial import load_financial_data, get_company_data, calculate_metrics, format_metrics_for_llm, format_raw_data_as_markdown
 
 
 class ContextBuilder:
@@ -22,8 +22,8 @@ class ContextBuilder:
         self.company_code: Optional[str] = None
         self.company_info: Optional[dict] = None
         self.financial_metrics: Optional[dict] = None
-        self.financial_summary: Optional[str] = None
-        self.pdf_full_text: Optional[str] = None
+        self.financial_markdown: Optional[str] = None  # 財務分析結果全体（Markdown）
+        self.securities_report_markdown: Optional[str] = None  # 有価証券報告書（Markdown）
 
     def load_financial_data(self, company_code: str) -> dict:
         """
@@ -56,16 +56,16 @@ class ContextBuilder:
             "capital": self.financial_metrics["資本金_億円"],
         }
 
-        # 既存の分析結果ファイルがあれば読み込む
+        # 財務分析Markdownファイルを読み込む
         summary_path = self.config.get_financial_summary_path(company_code)
         if summary_path.exists():
             with open(summary_path, encoding="utf-8") as f:
-                content = f.read()
-                # LLM要約部分を抽出
-                if "【LLM要約】" in content:
-                    self.financial_summary = content.split("【LLM要約】")[1].strip()
-                else:
-                    self.financial_summary = content
+                self.financial_markdown = f.read()
+        else:
+            # ファイルがない場合は、指標と生データからMarkdownを生成
+            metrics_text = format_metrics_for_llm(self.financial_metrics)
+            raw_data_text = format_raw_data_as_markdown(company_df)
+            self.financial_markdown = f"# 財務データ\n\n{metrics_text}\n\n{raw_data_text}"
 
         return self.financial_metrics
 
@@ -89,12 +89,12 @@ class ContextBuilder:
             )
 
         with open(md_path, encoding="utf-8") as f:
-            self.pdf_full_text = f.read()
-        return self.pdf_full_text
+            self.securities_report_markdown = f.read()
+        return self.securities_report_markdown
 
     def load_all(self, company_code: str) -> None:
         """
-        財務データと有価証券報告書全文を読み込む
+        財務データと有価証券報告書を読み込む
 
         Args:
             company_code: 企業コード
@@ -104,37 +104,28 @@ class ContextBuilder:
 
     def build_context(self) -> str:
         """
-        LLMに渡すコンテキストを構築
+        LLMに渡す統合コンテキストを構築
+
+        財務分析結果（計算済み指標 + 生データ + LLM要約）と
+        有価証券報告書を統合したMarkdown形式のコンテキストを生成
 
         Returns:
-            構築されたコンテキストテキスト
+            統合されたMarkdownテキスト
         """
         context_parts = []
 
-        # 企業基本情報
-        if self.company_info:
-            context_parts.append(f"""【企業基本情報】
-- 企業コード: {self.company_info['code']}
-- 所在地: {self.company_info['location']}
-- 業種: {self.company_info['industry']}
-- 従業員数: {self.company_info['employees']}名
-- 資本金: {self.company_info['capital']}億円
-""")
+        # 財務分析結果（Markdown）
+        if self.financial_markdown:
+            context_parts.append(self.financial_markdown)
 
-        # 財務指標
-        if self.financial_metrics:
-            context_parts.append(format_metrics_for_llm(self.financial_metrics))
+        # 有価証券報告書（Markdown）
+        if self.securities_report_markdown:
+            context_parts.append(f"""
+---
 
-        # 財務分析サマリー
-        if self.financial_summary:
-            context_parts.append(f"""【財務分析サマリー】
-{self.financial_summary}
-""")
+# 有価証券報告書
 
-        # 有価証券報告書（Markdown形式）
-        if self.pdf_full_text:
-            context_parts.append(f"""【有価証券報告書（Markdown形式）】
-{self.pdf_full_text}
+{self.securities_report_markdown}
 """)
 
         return "\n".join(context_parts)
@@ -147,6 +138,15 @@ class ContextBuilder:
         """財務指標を取得"""
         return self.financial_metrics
 
+    def get_financial_markdown(self) -> Optional[str]:
+        """財務分析結果（Markdown）を取得"""
+        return self.financial_markdown
+
+    def get_securities_report_markdown(self) -> Optional[str]:
+        """有価証券報告書（Markdown）を取得"""
+        return self.securities_report_markdown
+
+    # 後方互換性のため維持
     def get_pdf_full_text(self) -> Optional[str]:
-        """有価証券報告書（Markdown形式）を取得"""
-        return self.pdf_full_text
+        """有価証券報告書（Markdown形式）を取得（後方互換性）"""
+        return self.securities_report_markdown

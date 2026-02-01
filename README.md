@@ -53,7 +53,7 @@ docker compose run --rm snowflake-llm python -m cli.convert_pdf --all
 docker compose run --rm snowflake-llm python -m cli.convert_pdf --code 12044
 ```
 
-出力: `data/有価証券報告書（{企業コード}）.md`
+出力: `data/output/{企業コード}_securities.md`
 
 ### Step 2: 財務分析
 
@@ -65,7 +65,12 @@ docker compose run --rm snowflake-llm python -m cli.analyze_financial --all
 docker compose run --rm snowflake-llm python -m cli.analyze_financial 12044
 ```
 
-出力: `data/output/{企業コード}_summary.txt`
+出力: `data/output/{企業コード}_financial.md`
+
+財務分析結果には以下が含まれます：
+- 計算済み財務指標（成長率、利益率、自己資本比率など）
+- 財務データ生データ（Markdownテーブル）
+- LLM分析要約
 
 ### Step 3: 提案書生成
 
@@ -92,7 +97,8 @@ docker compose run --rm snowflake-llm python -m cli.run_all
 ```
 
 出力：
-- `data/有価証券報告書（{企業コード}）.md` - 変換済みMarkdown（10社分）
+- `data/output/{企業コード}_securities.md` - 有価証券報告書Markdown（10社分）
+- `data/output/{企業コード}_financial.md` - 財務分析結果Markdown（10社分）
 - `data/proposals/{企業コード}.docx` - 提案書（10社分）
 - `data/prompt_log.txt` - 全プロンプトログ
 

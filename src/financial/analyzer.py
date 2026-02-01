@@ -10,7 +10,7 @@ from typing import Optional, Union
 from ..llm import call_cortex_llm
 from ..common.config import Config, default_config
 from .loader import load_financial_data, get_company_data
-from .metrics import calculate_metrics, format_metrics_for_llm
+from .metrics import calculate_metrics, format_metrics_for_llm, format_raw_data_as_markdown
 
 
 def summarize_with_llm(metrics: dict) -> str:
@@ -94,8 +94,8 @@ class FinancialAnalyzer:
         # 財務指標算出
         metrics = calculate_metrics(company_df)
         metrics_text = format_metrics_for_llm(metrics)
+        raw_data_text = format_raw_data_as_markdown(company_df)
         print("財務指標を算出しました")
-        print(metrics_text)
 
         # LLM要約
         print("LLMで要約中...")
@@ -124,19 +124,21 @@ class FinancialAnalyzer:
         result = {
             "metrics": metrics,
             "metrics_text": metrics_text,
+            "raw_data_text": raw_data_text,
             "summary": summary,
         }
 
-        # ファイル出力
+        # ファイル出力（Markdown形式）
         if save_output:
             output_path = self.config.get_financial_summary_path(str(code))
             output_path.parent.mkdir(parents=True, exist_ok=True)
 
             with open(output_path, "w", encoding="utf-8") as f:
-                f.write(f"=== 企業コード {code} 財務分析結果 ===\n\n")
-                f.write("【入力データ】\n")
+                f.write(f"# 企業コード {code} 財務分析結果\n\n")
                 f.write(metrics_text)
-                f.write("\n\n【LLM要約】\n")
+                f.write("\n\n")
+                f.write(raw_data_text)
+                f.write("\n\n## LLM分析要約\n\n")
                 f.write(summary)
 
             print(f"結果を {output_path} に保存しました")

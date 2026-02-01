@@ -67,9 +67,9 @@ class Config:
             company_code: 企業コード
 
         Returns:
-            Markdownファイルパス
+            Markdownファイルパス（outputディレクトリ内）
         """
-        return self._data_dir / f"有価証券報告書（{company_code}）.md"
+        return self.output_dir / f"{company_code}_securities.md"
 
     def get_financial_summary_path(self, company_code: str) -> Path:
         """
@@ -79,9 +79,9 @@ class Config:
             company_code: 企業コード
 
         Returns:
-            サマリーファイルパス
+            サマリーファイルパス（Markdown形式）
         """
-        return self.output_dir / f"{company_code}_summary.txt"
+        return self.output_dir / f"{company_code}_financial.md"
 
     def get_proposal_path(self, company_code: str) -> Path:
         """
