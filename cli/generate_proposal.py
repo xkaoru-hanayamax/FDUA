@@ -35,8 +35,8 @@ def process_company(company_code: str, config: Config) -> bool:
     print("  財務データを読み込み中...")
     context_builder.load_financial_data(company_code)
 
-    print("  RAG要約を読み込み中...")
-    context_builder.load_rag_summaries(company_code)
+    print("  有価証券報告書を読み込み中...")
+    context_builder.load_pdf_full_text(company_code)
 
     # セクション生成
     print("\n[2/7] 各セクションを生成中...")

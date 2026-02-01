@@ -34,11 +34,6 @@ class Config:
         return self._data_dir / "financial_data.csv"
 
     @property
-    def chroma_db_path(self) -> Path:
-        """ChromaDB永続化ディレクトリ"""
-        return self._data_dir / "chroma_db"
-
-    @property
     def output_dir(self) -> Path:
         """分析結果出力ディレクトリ"""
         path = self._data_dir / "output"
@@ -63,18 +58,6 @@ class Config:
             PDFファイルパス
         """
         return self._data_dir / f"有価証券報告書（{company_code}）.pdf"
-
-    def get_rag_summary_path(self, company_code: str) -> Path:
-        """
-        企業コードからRAG要約ファイルパスを取得
-
-        Args:
-            company_code: 企業コード
-
-        Returns:
-            要約ファイルパス
-        """
-        return self._data_dir / f"有価証券報告書要約（{company_code}）.txt"
 
     def get_financial_summary_path(self, company_code: str) -> Path:
         """

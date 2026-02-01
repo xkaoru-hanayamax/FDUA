@@ -1,15 +1,14 @@
 """
 コンテキスト構築モジュール
 
-財務分析結果とRAG要約を統合してLLMに渡すコンテキストを構築
+財務分析結果と有価証券報告書全文を統合してLLMに渡すコンテキストを構築
 """
 
-import re
-from pathlib import Path
 from typing import Optional
 
 from ..common.config import Config, default_config
 from ..financial import load_financial_data, get_company_data, calculate_metrics, format_metrics_for_llm
+from .pdf_loader import load_pdf
 
 
 class ContextBuilder:
@@ -25,7 +24,7 @@ class ContextBuilder:
         self.company_info: Optional[dict] = None
         self.financial_metrics: Optional[dict] = None
         self.financial_summary: Optional[str] = None
-        self.rag_summaries: Optional[dict[str, str]] = None
+        self.pdf_full_text: Optional[str] = None
 
     def load_financial_data(self, company_code: str) -> dict:
         """
@@ -71,48 +70,32 @@ class ContextBuilder:
 
         return self.financial_metrics
 
-    def load_rag_summaries(self, company_code: str) -> dict[str, str]:
+    def load_pdf_full_text(self, company_code: str) -> str:
         """
-        RAG要約結果を読み込む
+        有価証券報告書PDFから全文テキストを抽出して保持
 
         Args:
             company_code: 企業コード
 
         Returns:
-            {クエリ: 要約}の辞書
+            抽出されたPDF全文テキスト
         """
-        # 要約ファイルパス
-        rag_path = self.config.get_rag_summary_path(company_code)
+        pdf_path = self.config.get_pdf_path(company_code)
+        if not pdf_path.exists():
+            raise FileNotFoundError(f"有価証券報告書が見つかりません: {pdf_path}")
 
-        if not rag_path.exists():
-            print(f"警告: RAG要約ファイルが見つかりません: {rag_path}")
-            self.rag_summaries = {}
-            return self.rag_summaries
-
-        with open(rag_path, encoding="utf-8") as f:
-            content = f.read()
-
-        # クエリごとの要約を抽出
-        self.rag_summaries = {}
-        sections = re.split(r"【(.+?)】\n-+\n", content)
-
-        # sections[0]はヘッダー、その後は[クエリ, 要約, クエリ, 要約, ...]の繰り返し
-        for i in range(1, len(sections) - 1, 2):
-            query = sections[i].strip()
-            summary = sections[i + 1].strip()
-            self.rag_summaries[query] = summary
-
-        return self.rag_summaries
+        self.pdf_full_text = load_pdf(pdf_path)
+        return self.pdf_full_text
 
     def load_all(self, company_code: str) -> None:
         """
-        財務データとRAG要約を両方読み込む
+        財務データと有価証券報告書全文を読み込む
 
         Args:
             company_code: 企業コード
         """
         self.load_financial_data(company_code)
-        self.load_rag_summaries(company_code)
+        self.load_pdf_full_text(company_code)
 
     def build_context(self) -> str:
         """
@@ -143,14 +126,10 @@ class ContextBuilder:
 {self.financial_summary}
 """)
 
-        # RAG要約
-        if self.rag_summaries:
-            rag_text = "\n\n".join([
-                f"【{query}】\n{summary}"
-                for query, summary in self.rag_summaries.items()
-            ])
-            context_parts.append(f"""【有価証券報告書からの抽出情報】
-{rag_text}
+        # 有価証券報告書全文
+        if self.pdf_full_text:
+            context_parts.append(f"""【有価証券報告書全文】
+{self.pdf_full_text}
 """)
 
         return "\n".join(context_parts)
@@ -163,6 +142,6 @@ class ContextBuilder:
         """財務指標を取得"""
         return self.financial_metrics
 
-    def get_rag_summaries(self) -> Optional[dict[str, str]]:
-        """RAG要約を取得"""
-        return self.rag_summaries
+    def get_pdf_full_text(self) -> Optional[str]:
+        """有価証券報告書全文を取得"""
+        return self.pdf_full_text

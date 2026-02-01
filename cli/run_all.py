@@ -1,12 +1,14 @@
 """
 全体一括実行CLI
 
-全ステップ（財務分析→ベクトルDB構築→RAG要約→提案書生成）を実行し、
+全ステップ（財務分析→提案書生成）を実行し、
 プロンプトログをタイムスタンプ付きで保存する。
+
+NOTE: ベクトルDB構築とRAG要約ステップは廃止済み。
+      PDF全文を直接LLMに入力する方式に移行。
 
 使用方法:
     python -m cli.run_all
-    python -m cli.run_all --force
 """
 
 import argparse
@@ -15,18 +17,15 @@ from pathlib import Path
 
 from src.common import COMPANY_CODES, PROPOSAL_MAX_CHARS, Config
 from src.financial import FinancialAnalyzer
-from src.vectordb import VectorDBIndexer
-from src.rag import RAGSummarizer
 from src.proposal import ContextBuilder, SectionGenerator, DocxWriter
 
 
-def run_all(config: Config, force_reindex: bool = False) -> dict:
+def run_all(config: Config) -> dict:
     """
     全ステップを実行
 
     Args:
         config: 設定オブジェクト
-        force_reindex: ベクトルDBを再作成するか
 
     Returns:
         結果サマリー
@@ -38,7 +37,7 @@ def run_all(config: Config, force_reindex: bool = False) -> dict:
     # Step 1: 財務分析
     # ========================================
     print("\n" + "=" * 80)
-    print("Step 1/4: 財務分析")
+    print("Step 1/2: 財務分析")
     print("=" * 80)
 
     for code in COMPANY_CODES:
@@ -61,56 +60,10 @@ def run_all(config: Config, force_reindex: bool = False) -> dict:
             results[code]["financial"] = f"失敗: {e}"
 
     # ========================================
-    # Step 2: ベクトルDB構築
+    # Step 2: 提案書生成
     # ========================================
     print("\n" + "=" * 80)
-    print("Step 2/4: ベクトルDB構築")
-    print("=" * 80)
-
-    indexer = VectorDBIndexer(config=config)
-    for code in COMPANY_CODES:
-        try:
-            print(f"\n[{code}] インデックス作成中...")
-            pdf_path = config.get_pdf_path(code)
-            if not pdf_path.exists():
-                raise FileNotFoundError(f"PDFが見つかりません: {pdf_path}")
-            indexer.create_index(code, pdf_path, force_reindex=force_reindex)
-            results[code]["vectordb"] = "成功"
-        except Exception as e:
-            print(f"[{code}] エラー: {e}")
-            results[code]["vectordb"] = f"失敗: {e}"
-
-    # ========================================
-    # Step 3: RAG要約
-    # ========================================
-    print("\n" + "=" * 80)
-    print("Step 3/4: RAG要約")
-    print("=" * 80)
-
-    for code in COMPANY_CODES:
-        try:
-            print(f"\n[{code}] RAG要約中...")
-            summarizer = RAGSummarizer(config=config)
-            summarizer.summarize_all(code, top_k=20, save_output=True)
-
-            # プロンプトログ収集
-            for log in summarizer.get_prompt_logs():
-                all_prompt_logs.append({
-                    "step": "RAG要約",
-                    "company_code": code,
-                    **log
-                })
-
-            results[code]["rag"] = "成功"
-        except Exception as e:
-            print(f"[{code}] エラー: {e}")
-            results[code]["rag"] = f"失敗: {e}"
-
-    # ========================================
-    # Step 4: 提案書生成
-    # ========================================
-    print("\n" + "=" * 80)
-    print("Step 4/4: 提案書生成")
+    print("Step 2/2: 提案書生成")
     print("=" * 80)
 
     for code in COMPANY_CODES:
@@ -218,43 +171,33 @@ def print_summary(results: dict):
     print("\n" + "=" * 80)
     print("処理結果サマリー")
     print("=" * 80)
-    print(f"{'企業コード':<10} {'財務分析':<10} {'VectorDB':<10} {'RAG要約':<10} {'提案書':<10}")
-    print("-" * 50)
+    print(f"{'企業コード':<12} {'財務分析':<12} {'提案書':<12}")
+    print("-" * 36)
 
     for code, result in results.items():
         financial = "OK" if result.get("financial") == "成功" else "NG"
-        vectordb = "OK" if result.get("vectordb") == "成功" else "NG"
-        rag = "OK" if result.get("rag") == "成功" else "NG"
         proposal = "OK" if result.get("proposal") == "成功" else "NG"
-        print(f"{code:<10} {financial:<10} {vectordb:<10} {rag:<10} {proposal:<10}")
+        print(f"{code:<12} {financial:<12} {proposal:<12}")
 
     # 成功数カウント
     total = len(COMPANY_CODES)
     success_counts = {
         "financial": sum(1 for r in results.values() if r.get("financial") == "成功"),
-        "vectordb": sum(1 for r in results.values() if r.get("vectordb") == "成功"),
-        "rag": sum(1 for r in results.values() if r.get("rag") == "成功"),
         "proposal": sum(1 for r in results.values() if r.get("proposal") == "成功"),
     }
 
-    print("-" * 50)
-    print(f"{'合計':<10} {success_counts['financial']}/{total:<7} {success_counts['vectordb']}/{total:<7} {success_counts['rag']}/{total:<7} {success_counts['proposal']}/{total:<7}")
+    print("-" * 36)
+    print(f"{'合計':<12} {success_counts['financial']}/{total:<9} {success_counts['proposal']}/{total:<9}")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="全ステップを一括実行（財務分析→ベクトルDB→RAG要約→提案書生成）",
+        description="全ステップを一括実行（財務分析→提案書生成）",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 使用例:
     python -m cli.run_all                # 全ステップ実行
-    python -m cli.run_all --force        # ベクトルDBを再作成して実行
         """,
-    )
-    parser.add_argument(
-        "--force",
-        action="store_true",
-        help="ベクトルDBを再作成",
     )
     parser.add_argument(
         "--data-dir",
@@ -272,7 +215,7 @@ def main():
     print("=" * 80)
 
     # 実行
-    results, all_prompt_logs = run_all(config, force_reindex=args.force)
+    results, all_prompt_logs = run_all(config)
 
     # プロンプトログ保存
     if all_prompt_logs:
