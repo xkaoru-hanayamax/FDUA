@@ -29,7 +29,9 @@ SNOWFLAKE_ROLE=ACCOUNTADMIN
 `data/` ディレクトリに以下を配置：
 
 - `financial_data.csv` - 財務データ
-- `有価証券報告書（12044）.pdf` - 各社の有価証券報告書（10社分）
+- `有価証券報告書（{企業コード}）.pdf` - 各社の有価証券報告書（10社分）
+
+※ PDFファイルは `cli.convert_pdf` でMarkdown形式に変換して使用
 
 ### 3. Dockerビルド
 
@@ -39,7 +41,21 @@ docker compose build
 
 ## 実行方法
 
-### Step 1: 財務分析
+### Step 1: PDF→Markdown変換（初回のみ）
+
+有価証券報告書PDFをdoclingでMarkdown形式に変換：
+
+```bash
+# 全10社を変換
+docker compose run --rm snowflake-llm python -m cli.convert_pdf --all
+
+# 1社のみ変換
+docker compose run --rm snowflake-llm python -m cli.convert_pdf --code 12044
+```
+
+出力: `data/有価証券報告書（{企業コード}）.md`
+
+### Step 2: 財務分析
 
 ```bash
 # 全10社を分析
@@ -51,7 +67,7 @@ docker compose run --rm snowflake-llm python -m cli.analyze_financial 12044
 
 出力: `data/output/{企業コード}_summary.txt`
 
-### Step 2: 提案書生成
+### Step 3: 提案書生成
 
 ```bash
 # 全10社の提案書を生成
@@ -65,13 +81,18 @@ docker compose run --rm snowflake-llm python -m cli.generate_proposal 12044
 
 ## 一括実行（推奨）
 
-全ステップを一括実行し、プロンプトログを保存：
+財務分析→提案書生成を一括実行し、プロンプトログを保存：
 
 ```bash
+# 事前にPDF変換を実行（初回のみ）
+docker compose run --rm snowflake-llm python -m cli.convert_pdf --all
+
+# 一括実行
 docker compose run --rm snowflake-llm python -m cli.run_all
 ```
 
 出力：
+- `data/有価証券報告書（{企業コード}）.md` - 変換済みMarkdown（10社分）
 - `data/proposals/{企業コード}.docx` - 提案書（10社分）
 - `data/prompt_log.txt` - 全プロンプトログ
 

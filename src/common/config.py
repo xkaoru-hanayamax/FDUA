@@ -59,6 +59,18 @@ class Config:
         """
         return self._data_dir / f"有価証券報告書（{company_code}）.pdf"
 
+    def get_markdown_path(self, company_code: str) -> Path:
+        """
+        企業コードから有価証券報告書Markdownパスを取得
+
+        Args:
+            company_code: 企業コード
+
+        Returns:
+            Markdownファイルパス
+        """
+        return self._data_dir / f"有価証券報告書（{company_code}）.md"
+
     def get_financial_summary_path(self, company_code: str) -> Path:
         """
         企業コードから財務分析サマリーファイルパスを取得

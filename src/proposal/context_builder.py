@@ -1,14 +1,13 @@
 """
 コンテキスト構築モジュール
 
-財務分析結果と有価証券報告書全文を統合してLLMに渡すコンテキストを構築
+財務分析結果と有価証券報告書（Markdown形式）を統合してLLMに渡すコンテキストを構築
 """
 
 from typing import Optional
 
 from ..common.config import Config, default_config
 from ..financial import load_financial_data, get_company_data, calculate_metrics, format_metrics_for_llm
-from .pdf_loader import load_pdf
 
 
 class ContextBuilder:
@@ -72,19 +71,25 @@ class ContextBuilder:
 
     def load_pdf_full_text(self, company_code: str) -> str:
         """
-        有価証券報告書PDFから全文テキストを抽出して保持
+        有価証券報告書Markdownファイルを読み込んで保持
+
+        事前に変換済みのMarkdownファイルを使用
 
         Args:
             company_code: 企業コード
 
         Returns:
-            抽出されたPDF全文テキスト
+            Markdownテキスト
         """
-        pdf_path = self.config.get_pdf_path(company_code)
-        if not pdf_path.exists():
-            raise FileNotFoundError(f"有価証券報告書が見つかりません: {pdf_path}")
+        md_path = self.config.get_markdown_path(company_code)
+        if not md_path.exists():
+            raise FileNotFoundError(
+                f"有価証券報告書Markdownが見つかりません: {md_path}\n"
+                "先に 'python -m cli.convert_pdf --all' を実行してください"
+            )
 
-        self.pdf_full_text = load_pdf(pdf_path)
+        with open(md_path, encoding="utf-8") as f:
+            self.pdf_full_text = f.read()
         return self.pdf_full_text
 
     def load_all(self, company_code: str) -> None:
@@ -126,9 +131,9 @@ class ContextBuilder:
 {self.financial_summary}
 """)
 
-        # 有価証券報告書全文
+        # 有価証券報告書（Markdown形式）
         if self.pdf_full_text:
-            context_parts.append(f"""【有価証券報告書全文】
+            context_parts.append(f"""【有価証券報告書（Markdown形式）】
 {self.pdf_full_text}
 """)
 
@@ -143,5 +148,5 @@ class ContextBuilder:
         return self.financial_metrics
 
     def get_pdf_full_text(self) -> Optional[str]:
-        """有価証券報告書全文を取得"""
+        """有価証券報告書（Markdown形式）を取得"""
         return self.pdf_full_text
