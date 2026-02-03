@@ -2,8 +2,8 @@
 情報整理エージェント（InfoOrganizer）の状態定義
 """
 
-from typing import TypedDict
-from .proposal_state import Issue
+from typing import TypedDict, Annotated
+from .proposal_state import Issue, merge_lists
 
 
 class InfoOrganizerState(TypedDict, total=False):
@@ -22,5 +22,5 @@ class InfoOrganizerState(TypedDict, total=False):
     missing_info: list[str]     # 不足している情報
     search_queries: list[str]   # Web検索用クエリ
 
-    # プロンプトログ
-    prompt_logs: list[dict]
+    # プロンプトログ（累積型）
+    prompt_logs: Annotated[list[dict], merge_lists]

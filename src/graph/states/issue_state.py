@@ -2,8 +2,8 @@
 課題抽出エージェント（IssueExtractor）の状態定義
 """
 
-from typing import TypedDict
-from .proposal_state import Issue
+from typing import TypedDict, Annotated
+from .proposal_state import Issue, merge_lists
 
 
 class IssueExtractorState(TypedDict, total=False):
@@ -17,7 +17,7 @@ class IssueExtractorState(TypedDict, total=False):
     securities_markdown: str
     company_info: dict
 
-    # 中間結果
+    # 中間結果（並列実行で別々に更新される）
     financial_issues: list[Issue]
     securities_issues: list[Issue]
 
@@ -25,5 +25,5 @@ class IssueExtractorState(TypedDict, total=False):
     integrated_issues: list[Issue]
     issue_categories: dict[str, list[Issue]]
 
-    # プロンプトログ
-    prompt_logs: list[dict]
+    # プロンプトログ（累積型：並列ノードからマージ）
+    prompt_logs: Annotated[list[dict], merge_lists]

@@ -56,7 +56,7 @@ def analyze_financial(state: IssueExtractorState) -> dict[str, Any]:
     Returns:
         更新された状態の差分
     """
-    logs = state.get("prompt_logs", [])
+    logs: list[dict] = []  # 新しいリストを作成（リデューサーでマージされる）
     company_info = state.get("company_info", {})
 
     prompt = f"""あなたは建設業界に詳しい財務アナリストです。
@@ -109,7 +109,7 @@ def analyze_securities(state: IssueExtractorState) -> dict[str, Any]:
     Returns:
         更新された状態の差分
     """
-    logs = state.get("prompt_logs", [])
+    logs: list[dict] = []  # 新しいリストを作成（リデューサーでマージされる）
     company_info = state.get("company_info", {})
 
     prompt = f"""あなたは建設業界に詳しい経営コンサルタントです。
@@ -161,8 +161,7 @@ def integrate_issues(state: IssueExtractorState) -> dict[str, Any]:
     Returns:
         更新された状態の差分
     """
-    logs = state.get("prompt_logs", [])
-
+    # このノードではログを追加しない（並列ノードのログは既にマージ済み）
     financial_issues = state.get("financial_issues", [])
     securities_issues = state.get("securities_issues", [])
 
@@ -187,7 +186,6 @@ def integrate_issues(state: IssueExtractorState) -> dict[str, Any]:
     return {
         "integrated_issues": integrated,
         "issue_categories": categories,
-        "prompt_logs": logs,
     }
 
 

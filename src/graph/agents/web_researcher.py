@@ -1,20 +1,21 @@
 """
-Web調査エージェント
+Web調査エージェント（課題駆動型）
 
-不足情報をWeb検索で補完する
+課題ごとに対策案を生成し、Google検索で裏付け情報を収集する
 
-Note:
-    Snowflake環境ではWeb検索APIが利用できない場合があるため、
-    LLMの事前学習知識をベースにした情報生成にフォールバックする
+フロー:
+    generate_solutions → research_solutions → summarize_insights
 """
 
 import json
-from typing import Any, Optional
+import os
+from typing import Any
 
 from langgraph.graph import StateGraph, START, END
 
-from ..states.research_state import WebResearcherState
-from ...llm import call_cortex_llm
+from ..states.research_state import WebResearcherState, SolutionItem
+from ..states.proposal_state import Issue
+from ...llm import call_cortex_llm, search_with_gemini
 
 
 def _call_llm_with_log(
@@ -32,9 +33,9 @@ def _call_llm_with_log(
     return response
 
 
-def search_industry_trends(state: WebResearcherState) -> dict[str, Any]:
+def generate_solutions(state: WebResearcherState) -> dict[str, Any]:
     """
-    業界動向を調査
+    課題ごとに対策案と検索クエリを生成
 
     Args:
         state: 現在の状態
@@ -42,51 +43,126 @@ def search_industry_trends(state: WebResearcherState) -> dict[str, Any]:
     Returns:
         更新された状態の差分
     """
-    logs = state.get("prompt_logs", [])
+    logs: list[dict] = []
+    issues = state.get("issues", [])
     company_info = state.get("company_info", {})
-    search_queries = state.get("search_queries", [])
+    location = company_info.get("location", "")
+    industry = company_info.get("industry", "建設業")
 
-    # 業界関連のクエリをフィルタ
-    industry_queries = [
-        q for q in search_queries
-        if any(kw in q for kw in ["業界", "トレンド", "動向", "市場"])
-    ]
+    solutions: list[SolutionItem] = []
 
-    if not industry_queries:
-        industry_queries = [f"{company_info.get('industry', '建設業')} 業界 動向 2024"]
+    # 課題を優先度順に上位5件に絞る（LLM呼び出し回数を抑制）
+    severity_order = {"high": 0, "medium": 1, "low": 2}
+    sorted_issues = sorted(
+        issues,
+        key=lambda x: severity_order.get(x.get("severity", "low"), 2)
+    )[:5]
 
-    prompt = f"""あなたは建設業界に詳しいリサーチャーです。
-以下の検索クエリに基づき、建設業界の最新動向について知見を提供してください。
+    for issue in sorted_issues:
+        prompt = f"""あなたは建設業界に詳しい経営コンサルタントです。
+以下の課題に対して、具体的な対策案と、その対策を裏付ける情報を得るための検索クエリを生成してください。
 
-【検索クエリ】
-{chr(10).join([f"- {q}" for q in industry_queries[:3]])}
+【課題】
+- カテゴリ: {issue.get('category', '不明')}
+- 説明: {issue.get('description', '')}
+- 深刻度: {issue.get('severity', '不明')}
+- 根拠: {issue.get('evidence', '')}
 
 【企業情報】
-- 業種: {company_info.get('industry', '建設業')}
+- 所在地: {location}
+- 業種: {industry}
 
-以下の観点で情報を整理してください：
-1. 建設業界全体のトレンド（2024-2025年）
-2. {company_info.get('industry', '建設業')}セグメントの特徴
-3. 主要な課題と対応策の動向
-4. 今後の見通し
+以下の形式でJSON出力してください。必ず有効なJSONのみを出力すること：
+{{
+  "solution": "具体的な対策案（100-200字）",
+  "search_query": "対策の根拠となる情報を得るための検索クエリ"
+}}
 
-具体的な数値や事例を含めて、500字程度で説明してください。
+対策案は以下を考慮してください：
+- 企業の規模・地域特性に適した現実的な提案
+- 建設業界のGX/DX、2024年問題への対応
+- 具体的な施策と期待効果
 """
 
-    response = _call_llm_with_log(prompt, "業界動向調査", logs)
+        response = _call_llm_with_log(prompt, f"対策案生成: {issue.get('category', '不明')}", logs)
 
-    research_results = state.get("research_results", {})
-    research_results["industry_trends"] = response
+        # JSONパース
+        try:
+            start = response.find('{')
+            end = response.rfind('}') + 1
+            if start >= 0 and end > start:
+                parsed = json.loads(response[start:end])
+                solution_item: SolutionItem = {
+                    "issue": issue,
+                    "solution": parsed.get("solution", ""),
+                    "search_query": parsed.get("search_query", ""),
+                    "evidence": "",  # 後で調査結果を追加
+                }
+                solutions.append(solution_item)
+        except (json.JSONDecodeError, ValueError):
+            # パース失敗時はデフォルトクエリを使用
+            solution_item: SolutionItem = {
+                "issue": issue,
+                "solution": f"{issue.get('description', '')}への対応が必要",
+                "search_query": f"{industry} {issue.get('category', '')} 対策 事例",
+                "evidence": "",
+            }
+            solutions.append(solution_item)
 
     return {
-        "research_results": research_results,
+        "solutions": solutions,
         "prompt_logs": logs,
     }
 
 
-def search_regional_info(state: WebResearcherState) -> dict[str, Any]:
+def _search_with_google(query: str, context: str, logs: list[dict]) -> str:
     """
-    地域特性を調査
+    Google検索で情報を取得（Gemini API使用）
+
+    GEMINI_API_KEYが設定されていない場合はLLMにフォールバック
+    """
+    # Gemini APIキーがあればGoogle検索を使用
+    if os.getenv("GEMINI_API_KEY"):
+        try:
+            response = search_with_gemini(query, context)
+            logs.append({
+                "step": f"Google検索: {query[:50]}...",
+                "prompt": f"検索クエリ: {query}\nコンテキスト: {context}",
+                "response": response,
+                "source": "google_search",
+            })
+            return response
+        except Exception as e:
+            # エラー時はLLMにフォールバック
+            logs.append({
+                "step": f"Google検索エラー: {query[:50]}...",
+                "error": str(e),
+            })
+
+    # フォールバック: LLMの知識を使用
+    fallback_prompt = f"""以下の検索クエリについて、あなたの知識で回答してください。
+
+【検索クエリ】
+{query}
+
+【コンテキスト】
+{context}
+
+具体的な事例、数値、根拠を含めて300字程度で回答してください。
+"""
+    response = call_cortex_llm(fallback_prompt)
+    logs.append({
+        "step": f"LLMフォールバック: {query[:50]}...",
+        "prompt": fallback_prompt,
+        "response": response,
+        "source": "llm_fallback",
+    })
+    return response
+
+
+def research_solutions(state: WebResearcherState) -> dict[str, Any]:
+    """
+    各対策案に対してGoogle検索で調査し、裏付け情報を収集
 
     Args:
         state: 現在の状態
@@ -94,78 +170,57 @@ def search_regional_info(state: WebResearcherState) -> dict[str, Any]:
     Returns:
         更新された状態の差分
     """
-    logs = state.get("prompt_logs", [])
+    logs: list[dict] = []
+    solutions = state.get("solutions", [])
     company_info = state.get("company_info", {})
-    location = company_info.get('location', '')
+    location = company_info.get("location", "")
+    industry = company_info.get("industry", "建設業")
 
-    prompt = f"""あなたは地域経済に詳しいリサーチャーです。
-{location}における建設業界の状況と地域特性について情報を提供してください。
+    updated_solutions: list[SolutionItem] = []
+    research_results: dict[str, str] = {}
 
-【対象地域】
-{location}
+    # Google検索が利用可能かログ出力
+    if os.getenv("GEMINI_API_KEY"):
+        print("  - Google検索を使用します（Gemini API）")
+    else:
+        print("  - GEMINI_API_KEY未設定のため、LLMの知識を使用します")
 
-以下の観点で情報を整理してください：
-1. {location}の人口動態と経済状況
-2. 公共事業・インフラ整備の動向
-3. 民間建設需要の特徴
-4. 地域特有の課題（災害対策、老朽化対応など）
-5. 地方自治体の建設関連施策
+    for solution_item in solutions:
+        issue = solution_item.get("issue", {})
+        solution = solution_item.get("solution", "")
+        search_query = solution_item.get("search_query", "")
 
-具体的な数値や事例を含めて、500字程度で説明してください。
+        # コンテキスト情報
+        context = f"""
+対象: {location}の{industry}企業
+課題: {issue.get('description', '')}
+対策案: {solution}
+
+以下の観点で情報を収集:
+1. 類似事例・成功事例（企業名、具体的な施策、効果）
+2. 関連する数値データ・統計
+3. 地域特性を考慮した適用可能性
+4. 期待される効果・ROI
 """
 
-    response = _call_llm_with_log(prompt, "地域情報調査", logs)
+        # Google検索で裏付け情報を取得
+        response = _search_with_google(search_query, context, logs)
 
-    research_results = state.get("research_results", {})
-    research_results["regional_info"] = response
+        # 更新されたSolutionItemを作成
+        updated_item: SolutionItem = {
+            "issue": issue,
+            "solution": solution,
+            "search_query": search_query,
+            "evidence": response,
+        }
+        updated_solutions.append(updated_item)
 
-    return {
-        "research_results": research_results,
-        "prompt_logs": logs,
-    }
-
-
-def search_tech_trends(state: WebResearcherState) -> dict[str, Any]:
-    """
-    GX/DX技術動向を調査
-
-    Args:
-        state: 現在の状態
-
-    Returns:
-        更新された状態の差分
-    """
-    logs = state.get("prompt_logs", [])
-    company_info = state.get("company_info", {})
-
-    prompt = f"""あなたは建設テクノロジーに詳しいリサーチャーです。
-建設業界におけるGX（グリーントランスフォーメーション）とDX（デジタルトランスフォーメーション）の最新動向について情報を提供してください。
-
-【企業業種】
-{company_info.get('industry', '建設業')}
-
-以下の観点で情報を整理してください：
-
-【GX（環境対応）】
-1. カーボンニュートラル対応の動向
-2. 低コスト工法・環境技術の事例
-3. 省エネ建築・ZEB/ZEHの動向
-
-【DX（デジタル化）】
-1. BIM/CIM活用の現状と事例
-2. ICT施工・省力化技術
-3. AI/IoT活用の事例
-4. 2024年問題への技術的対応
-
-具体的な導入事例や数値を含めて、600字程度で説明してください。
-"""
-
-    response = _call_llm_with_log(prompt, "技術動向調査", logs)
-
-    research_results = state.get("research_results", {})
-    research_results["tech_trends"] = response
+        # 旧形式との互換性のためresearch_resultsにも追加
+        category = issue.get('category', 'その他')
+        research_results[f"solution_{category}"] = f"【対策】{solution}\n\n【裏付け】{response}"
 
     return {
+        "solutions": updated_solutions,
         "research_results": research_results,
         "prompt_logs": logs,
     }
@@ -173,7 +228,7 @@ def search_tech_trends(state: WebResearcherState) -> dict[str, Any]:
 
 def summarize_insights(state: WebResearcherState) -> dict[str, Any]:
     """
-    調査結果から知見を抽出
+    調査結果から知見を統合
 
     Args:
         state: 現在の状態
@@ -181,38 +236,44 @@ def summarize_insights(state: WebResearcherState) -> dict[str, Any]:
     Returns:
         更新された状態の差分
     """
-    logs = state.get("prompt_logs", [])
-    research_results = state.get("research_results", {})
+    logs: list[dict] = []
+    solutions = state.get("solutions", [])
     company_info = state.get("company_info", {})
 
-    # 調査結果を結合
-    all_results = "\n\n".join([
-        f"【{key}】\n{value}"
-        for key, value in research_results.items()
-    ])
+    # 全調査結果を結合
+    all_findings = []
+    for item in solutions:
+        issue = item.get("issue", {})
+        all_findings.append(f"""
+【課題】{issue.get('description', '')}
+【対策案】{item.get('solution', '')}
+【裏付け情報】{item.get('evidence', '')}
+""")
+
+    combined_findings = "\n---\n".join(all_findings)
 
     prompt = f"""あなたは経営コンサルタントです。
-以下の調査結果から、{company_info.get('industry', '建設業')}企業への提案に活用できる重要な知見を抽出してください。
+以下の課題・対策・調査結果から、{company_info.get('industry', '建設業')}企業への提案に活用できる重要な知見を抽出してください。
 
 【企業情報】
 - 所在地: {company_info.get('location', '不明')}
 - 業種: {company_info.get('industry', '不明')}
 
 【調査結果】
-{all_results}
+{combined_findings}
 
 以下の形式で、提案に活用できる具体的な知見を5〜8個抽出してください。
-各知見は1〜2文で簡潔に記述し、具体的な数値や事例を含めてください。
+各知見は、課題と対策の関係性を明確にし、具体的な数値や事例を含めてください。
 
 出力形式（JSON）：
 [
-  "知見1: 具体的な内容",
+  "知見1: 課題〇〇に対して、△△の対策が有効。事例として□□がある",
   "知見2: 具体的な内容",
   ...
 ]
 """
 
-    response = _call_llm_with_log(prompt, "知見抽出", logs)
+    response = _call_llm_with_log(prompt, "知見統合", logs)
 
     # 知見をパース
     insights = []
@@ -222,11 +283,9 @@ def summarize_insights(state: WebResearcherState) -> dict[str, Any]:
         if start >= 0 and end > start:
             insights = json.loads(response[start:end])
     except (json.JSONDecodeError, ValueError):
-        # パース失敗時は調査結果のサマリーを使用
+        # パース失敗時は対策のサマリーを使用
         insights = [
-            f"業界動向: {research_results.get('industry_trends', '')[:100]}...",
-            f"地域特性: {research_results.get('regional_info', '')[:100]}...",
-            f"技術動向: {research_results.get('tech_trends', '')[:100]}...",
+            f"対策: {item.get('solution', '')}" for item in solutions[:5]
         ]
 
     return {
@@ -237,7 +296,7 @@ def summarize_insights(state: WebResearcherState) -> dict[str, Any]:
 
 def create_web_researcher() -> StateGraph:
     """
-    Web調査エージェントのグラフを構築
+    Web調査エージェントのグラフを構築（課題駆動型）
 
     Returns:
         構築されたStateGraph
@@ -245,49 +304,47 @@ def create_web_researcher() -> StateGraph:
     graph = StateGraph(WebResearcherState)
 
     # ノード追加
-    graph.add_node("search_industry_trends", search_industry_trends)
-    graph.add_node("search_regional_info", search_regional_info)
-    graph.add_node("search_tech_trends", search_tech_trends)
+    graph.add_node("generate_solutions", generate_solutions)
+    graph.add_node("research_solutions", research_solutions)
     graph.add_node("summarize_insights", summarize_insights)
 
-    # エッジ追加（並列調査→統合）
-    graph.add_edge(START, "search_industry_trends")
-    graph.add_edge(START, "search_regional_info")
-    graph.add_edge(START, "search_tech_trends")
-    graph.add_edge("search_industry_trends", "summarize_insights")
-    graph.add_edge("search_regional_info", "summarize_insights")
-    graph.add_edge("search_tech_trends", "summarize_insights")
+    # エッジ追加（順次実行）
+    graph.add_edge(START, "generate_solutions")
+    graph.add_edge("generate_solutions", "research_solutions")
+    graph.add_edge("research_solutions", "summarize_insights")
     graph.add_edge("summarize_insights", END)
 
     return graph
 
 
 def run_web_researcher(
-    search_queries: list[str],
+    issues: list[Issue],
     company_info: dict,
 ) -> dict[str, Any]:
     """
-    Web調査エージェントを実行
+    Web調査エージェントを実行（課題駆動型）
 
     Args:
-        search_queries: 検索クエリリスト
+        issues: 課題リスト
         company_info: 企業基本情報
 
     Returns:
-        調査結果（research_results, insights, prompt_logs）
+        調査結果（solutions, insights, research_results, prompt_logs）
     """
     graph = create_web_researcher()
     app = graph.compile()
 
     initial_state: WebResearcherState = {
-        "search_queries": search_queries,
+        "issues": issues,
         "company_info": company_info,
+        "solutions": [],
         "prompt_logs": [],
     }
 
     result = app.invoke(initial_state)
 
     return {
+        "solutions": result.get("solutions", []),
         "research_results": result.get("research_results", {}),
         "insights": result.get("insights", []),
         "prompt_logs": result.get("prompt_logs", []),
