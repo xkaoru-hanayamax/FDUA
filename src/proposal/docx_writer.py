@@ -138,7 +138,9 @@ class DocxWriter:
             # 段落を追加（空行で分割）
             for para in content.split("\n"):
                 if para.strip():
-                    p = doc.add_paragraph(para)
+                    # Markdown見出し記法を除去
+                    cleaned = para.lstrip("#").strip()
+                    p = doc.add_paragraph(cleaned)
                     # フォントサイズ設定
                     for run in p.runs:
                         run.font.size = Pt(10.5)

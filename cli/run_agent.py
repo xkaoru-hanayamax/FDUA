@@ -115,22 +115,20 @@ def main():
             print("\n--- 実行結果 ---")
             print(f"企業コード: {result['company_code']}")
             print(f"企業情報: {result['company_info']}")
-            print(f"抽出された課題: {len(result['issues'])}件")
-            print(f"調査結果: {len(result['research_results'])}カテゴリ")
-            print(f"知見: {len(result['insights'])}件")
-            print(f"出力ファイル: {result['output_path']}")
-            print(f"総文字数: {result['total_chars']}字")
+            print(f"抽出された課題: {len(result.get('issues', []))}件")
+            print(f"出力ファイル: {result.get('output_path', 'N/A')}")
+            print(f"総文字数: {result.get('total_chars', 0)}字")
 
-            if result['errors']:
+            if result.get('errors'):
                 print(f"エラー: {result['errors']}")
 
             # セクション別文字数
             print("\n--- セクション別文字数 ---")
-            for section, count in result['section_char_counts'].items():
+            for section, count in result.get('section_char_counts', {}).items():
                 print(f"  {section}: {count}字")
 
             # プロンプトログ保存
-            if args.save_log and result['prompt_logs']:
+            if args.save_log and result.get('prompt_logs'):
                 log_path = save_prompt_log(
                     result['prompt_logs'],
                     code,

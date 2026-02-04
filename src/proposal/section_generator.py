@@ -67,39 +67,9 @@ class SectionGenerator:
 """
         shortened = self._call_llm_with_log(prompt, f"{section_name}（短縮）")
 
-        # 短縮後も超過していたら文の区切りで切り詰め
         new_len = len(shortened)
-        if new_len > limit:
-            print(f"  ⚠ 短縮後も{new_len}字で超過。文の区切りで切り詰め...")
-            shortened = self._truncate_at_sentence(shortened, limit)
-
-        print(f"  → {current_len}字 → {len(shortened)}字に短縮完了")
+        print(f"  → {current_len}字 → {new_len}字に短縮完了")
         return shortened
-
-    def _truncate_at_sentence(self, text: str, limit: int) -> str:
-        """文の区切りで切り詰めて上限以内に収める"""
-        if len(text) <= limit:
-            return text
-
-        cut_text = text[:limit]
-
-        # 句点（。）で切る
-        last_period = cut_text.rfind("。")
-        if last_period > limit * 0.5:
-            return cut_text[:last_period + 1]
-
-        # 改行で切る
-        last_newline = cut_text.rfind("\n")
-        if last_newline > limit * 0.5:
-            return cut_text[:last_newline]
-
-        # 読点（、）で切る
-        last_comma = cut_text.rfind("、")
-        if last_comma > limit * 0.5:
-            return cut_text[:last_comma + 1]
-
-        # どの区切りもない場合は上限で切る
-        return cut_text
 
     @property
     def company_info(self) -> dict:
