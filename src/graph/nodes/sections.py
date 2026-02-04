@@ -36,10 +36,14 @@ def _build_context(state: ProposalAgentState) -> str:
 
     # 有価証券報告書
     if state.get("securities_markdown"):
-        # 長すぎる場合は切り詰め
+        # 長すぎる場合は改行位置で切り詰め
         securities = state["securities_markdown"]
         if len(securities) > 30000:
-            securities = securities[:30000] + "\n... (以下省略)"
+            cut_pos = securities[:30000].rfind("\n")
+            if cut_pos > 20000:
+                securities = securities[:cut_pos] + "\n\n（以下省略）"
+            else:
+                securities = securities[:30000]
         parts.append(f"# 有価証券報告書\n\n{securities}")
 
     # 調査結果

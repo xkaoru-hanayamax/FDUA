@@ -12,9 +12,6 @@ from .states.proposal_state import ProposalAgentState
 from .nodes import (
     load_data,
     extract_issues,
-    organize_info,
-    check_sufficiency,
-    web_research,
     generate_overview,
     generate_issues,
     generate_strategy,
@@ -23,7 +20,6 @@ from .nodes import (
     check_and_truncate,
     write_docx,
 )
-from .edges.conditionals import should_research, should_regenerate
 
 
 def create_proposal_agent() -> StateGraph:
@@ -31,34 +27,25 @@ def create_proposal_agent() -> StateGraph:
     提案書生成エージェントのグラフを構築
 
     フロー:
-    START → load_data → extract_issues → organize_info → check_sufficiency
-                                                              │
-                                                    ┌─────────┴─────────┐
-                                                    ▼ 不足              ▼ 十分
-                                             web_research      generate_overview
-                                                    │                   │
-                                                    └───────────────────┤
-                                                                        ▼
-                                                               generate_issues
-                                                                        │
-                                                                        ▼
-                                                              generate_strategy
-                                                                        │
-                                                                        ▼
-                                                               generate_effects
-                                                                        │
-                                                                        ▼
-                                                               generate_roadmap
-                                                                        │
-                                                                        ▼
-                                                            check_and_truncate
-                                                                        │
-                                                    ┌─────────┴─────────┐
-                                                    ▼ 不足              ▼ OK
-                                             organize_info         write_docx
-                                                                        │
-                                                                        ▼
-                                                                       END
+    START → load_data → extract_issues → generate_overview → generate_issues
+                                                                    │
+                                                                    ▼
+                                                          generate_strategy
+                                                                    │
+                                                                    ▼
+                                                           generate_effects
+                                                                    │
+                                                                    ▼
+                                                           generate_roadmap
+                                                                    │
+                                                                    ▼
+                                                        check_and_truncate
+                                                                    │
+                                                                    ▼
+                                                              write_docx
+                                                                    │
+                                                                    ▼
+                                                                   END
 
     Returns:
         構築されたStateGraph
@@ -68,9 +55,6 @@ def create_proposal_agent() -> StateGraph:
     # ノード追加
     graph.add_node("load_data", load_data)
     graph.add_node("extract_issues", extract_issues)
-    graph.add_node("organize_info", organize_info)
-    graph.add_node("check_sufficiency", check_sufficiency)
-    graph.add_node("web_research", web_research)
     graph.add_node("generate_overview", generate_overview)
     graph.add_node("generate_issues", generate_issues)
     graph.add_node("generate_strategy", generate_strategy)
@@ -79,44 +63,16 @@ def create_proposal_agent() -> StateGraph:
     graph.add_node("check_and_truncate", check_and_truncate)
     graph.add_node("write_docx", write_docx)
 
-    # エッジ追加
-    # 初期フロー
+    # エッジ追加（直線フロー）
     graph.add_edge(START, "load_data")
     graph.add_edge("load_data", "extract_issues")
-    graph.add_edge("extract_issues", "organize_info")
-    graph.add_edge("organize_info", "check_sufficiency")
-
-    # 条件分岐: 情報十分性判定
-    graph.add_conditional_edges(
-        "check_sufficiency",
-        should_research,
-        {
-            "web_research": "web_research",
-            "generate_overview": "generate_overview",
-        }
-    )
-
-    # Web調査後はセクション生成へ
-    graph.add_edge("web_research", "generate_overview")
-
-    # セクション生成フロー（順次実行）
+    graph.add_edge("extract_issues", "generate_overview")
     graph.add_edge("generate_overview", "generate_issues")
     graph.add_edge("generate_issues", "generate_strategy")
     graph.add_edge("generate_strategy", "generate_effects")
     graph.add_edge("generate_effects", "generate_roadmap")
     graph.add_edge("generate_roadmap", "check_and_truncate")
-
-    # 条件分岐: 文字数チェック後
-    graph.add_conditional_edges(
-        "check_and_truncate",
-        should_regenerate,
-        {
-            "organize_info": "organize_info",
-            "write_docx": "write_docx",
-        }
-    )
-
-    # 出力後は終了
+    graph.add_edge("check_and_truncate", "write_docx")
     graph.add_edge("write_docx", END)
 
     return graph
@@ -141,8 +97,6 @@ def run_proposal_agent(
             "sections": 生成されたセクション,
             "section_char_counts": セクション別文字数,
             "issues": 抽出された課題,
-            "research_results": 調査結果,
-            "insights": 知見,
             "prompt_logs": プロンプトログ,
             "output_path": 出力ファイルパス,
             "total_chars": 総文字数,
@@ -167,7 +121,7 @@ def run_proposal_agent(
         "search_queries": [],
         "research_results": {},
         "insights": [],
-        "is_info_sufficient": False,
+        "is_info_sufficient": True,  # Web調査を削除したため常にTrue
         "sufficiency_check_count": 0,
         "sections": {},
         "section_char_counts": {},
@@ -188,8 +142,6 @@ def run_proposal_agent(
         "sections": result.get("sections", {}),
         "section_char_counts": result.get("section_char_counts", {}),
         "issues": result.get("issues", []),
-        "research_results": result.get("research_results", {}),
-        "insights": result.get("insights", []),
         "prompt_logs": result.get("prompt_logs", []),
         "output_path": result.get("output_path"),
         "total_chars": result.get("total_chars"),
