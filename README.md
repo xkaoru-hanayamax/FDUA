@@ -129,3 +129,227 @@ docker compose run --rm snowflake-llm python -m cli.analyze_financial --help
 | 292640 | 北海道 | 専門工事 |
 | 308582 | 宮崎県 | 環境・エネルギー関連 |
 | 325042 | 新潟県 | 専門工事 |
+
+## LangGraphエージェントシステム
+
+LangGraphを使用したエージェントベースの提案書生成システム。直線フローで財務・有報データから提案書を自動生成します。
+
+### 特徴
+
+- **評価基準の組み込み**: コンペの評価基準（地域性、業界特性、GX/DX対応等）をプロンプトに明示的に組み込み
+- **セクション間の論理的接続**: 「過去分析→課題→未来提案」の一貫した因果関係を維持
+- **統合的な課題抽出**: 財務データと有報を1回のLLM呼び出しで一貫分析
+
+### 実行方法
+
+```bash
+# 1社の提案書を生成
+docker compose run --rm snowflake-llm python -m cli.run_agent --code 12044
+
+# 全10社を生成
+docker compose run --rm snowflake-llm python -m cli.run_agent --all
+
+# デバッグモード（プロンプトログ出力）
+docker compose run --rm snowflake-llm python -m cli.run_agent --code 12044 --debug
+```
+
+### グラフ構造と各ノードの入出力
+
+```
+┌─────────────┐
+│    START    │
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐
+│  load_data  │  財務・有報Markdown読み込み
+└──────┬──────┘
+       │
+       ▼
+┌──────────────┐
+│extract_issues│  課題抽出
+└──────┬───────┘
+       │
+       ▼
+┌─────────────────┐
+│generate_overview│  セクション1: 企業概要・分析
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ generate_issues │  セクション2: 課題の抽出
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│generate_strategy│  セクション3: 成長戦略・提案
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ generate_effects│  セクション4: 効果試算
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ generate_roadmap│  セクション5: ロードマップ
+└────────┬────────┘
+         │
+         ▼
+┌──────────────────┐
+│check_and_truncate│  文字数チェック・調整
+└────────┬─────────┘
+         │
+         ▼
+┌──────────┐
+│write_docx│  DOCX出力
+└────┬─────┘
+     │
+     ▼
+┌──────────┐
+│   END    │
+└──────────┘
+```
+
+### 各ノードの詳細
+
+#### 1. load_data（データ読み込み）
+
+| 項目 | 内容 |
+|------|------|
+| **入力** | `company_code`（企業コード） |
+| **処理** | 財務分析Markdown・有報Markdownをファイルから読み込み |
+| **出力** | `financial_markdown`, `securities_markdown`, `company_info` |
+
+#### 2. extract_issues（課題抽出）
+
+| 項目 | 内容 |
+|------|------|
+| **入力** | `financial_markdown`, `securities_markdown`, `company_info` |
+| **処理** | 1回のLLM呼び出しで財務・有報から課題を統合抽出（JSON形式で出力をパース、カテゴリ別分類・重要度ソート） |
+| **出力** | `issues`（課題リスト）, `issue_categories`（カテゴリ別分類）, `prompt_logs` |
+
+#### 3. generate_overview（企業概要・分析）
+
+| 項目 | 内容 |
+|------|------|
+| **入力** | `financial_markdown`, `securities_markdown`, `company_info`, `EVALUATION_CRITERIA` |
+| **処理** | LLMで企業概要・外部環境・財務分析を生成（上限2,800字） |
+| **出力** | `sections["overview"]` |
+
+#### 4. generate_issues（課題の抽出）
+
+| 項目 | 内容 |
+|------|------|
+| **入力** | `issues`, `sections["overview"]`, `company_info`, `EVALUATION_CRITERIA` |
+| **処理** | 前セクション（overview）を参照し、論理的に接続した課題セクションを生成（上限2,300字） |
+| **出力** | `sections["issues"]` |
+
+#### 5. generate_strategy（成長戦略・提案）
+
+| 項目 | 内容 |
+|------|------|
+| **入力** | `issues`, `sections["issues"]`, `company_info`, `EVALUATION_CRITERIA` |
+| **処理** | 課題から論理的に導かれる成長戦略を生成（上限3,200字） |
+| **出力** | `sections["strategy"]` |
+
+#### 6. generate_effects（効果試算）
+
+| 項目 | 内容 |
+|------|------|
+| **入力** | `issues`, `sections["strategy"]`, `financial_markdown`, `EVALUATION_CRITERIA` |
+| **処理** | 戦略の定量・定性効果を試算（上限1,800字） |
+| **出力** | `sections["effects"]` |
+
+#### 7. generate_roadmap（ロードマップ）
+
+| 項目 | 内容 |
+|------|------|
+| **入力** | `issues`, `sections["strategy"]`, `EVALUATION_CRITERIA` |
+| **処理** | 5年間の実行計画・マイルストーンを生成（上限1,800字） |
+| **出力** | `sections["roadmap"]` |
+
+#### 8. check_and_truncate（文字数調整）
+
+| 項目 | 内容 |
+|------|------|
+| **入力** | `sections`（全5セクション） |
+| **処理** | 合計15,000字以内に収まるよう必要に応じてLLMで要約 |
+| **出力** | `sections`（調整済み）, `total_char_count` |
+
+#### 9. write_docx（DOCX出力）
+
+| 項目 | 内容 |
+|------|------|
+| **入力** | `sections`, `company_code` |
+| **処理** | python-docxで提案書を生成 |
+| **出力** | `data/proposals/{企業コード}.docx` |
+
+### 評価基準の組み込み
+
+全セクション生成時に以下の評価基準がプロンプトに含まれます（`EVALUATION_CRITERIA`定数）:
+
+```
+1. 過去3年の分析と未来提案が論理的に接続していること
+2. 地域特性を踏まえた具体的な分析・提案であること
+3. 官公庁/民間、元請/下請の販路・商流を理解した内容であること
+4. GX（環境技術、脱炭素）・DX（ICT施工、BIM/CIM）への対応を含むこと
+5. 人材不足・2024年問題・需要変化への対応策を含むこと
+```
+
+### ファイル構成
+
+```
+src/
+├── common/
+│   ├── constants.py               # 定数定義（EVALUATION_CRITERIA等）
+│   └── debug.py                   # デバッグログ出力
+│
+├── graph/
+│   ├── __init__.py                # パッケージエクスポート
+│   ├── proposal_agent.py          # メインエージェント（直線フロー）
+│   │
+│   ├── states/                    # 状態クラス
+│   │   └── proposal_state.py      # ProposalAgentState, Issue
+│   │
+│   ├── nodes/                     # ノード
+│   │   ├── load_data.py           # データ読み込み
+│   │   ├── extract_issues.py      # 課題抽出（LLM呼び出し・JSON解析）
+│   │   ├── sections.py            # セクション生成（5セクション）
+│   │   ├── truncation.py          # 文字数制御
+│   │   └── output.py              # DOCX出力
+│   │
+│   └── edges/
+│       └── conditionals.py        # 条件分岐（将来の拡張用）
+│
+└── proposal/
+    └── docx_writer.py             # DOCX出力処理
+```
+
+### 状態管理
+
+LangGraphの`Annotated`型を使用してリデューサー関数を定義し、ノードからの状態更新を自動マージ：
+
+```python
+# 例: prompt_logsは各ノードから返されたリストが自動的に結合される
+prompt_logs: Annotated[list[dict], merge_lists]
+
+# 例: research_resultsは各調査ノードの結果が自動的にマージされる
+research_results: Annotated[dict[str, str], merge_dicts]
+```
+
+### セクション間の依存関係
+
+各セクションは前セクションの内容を参照し、論理的な接続を維持します：
+
+```
+overview（企業概要・分析）
+    ↓ 参照
+issues（課題の抽出）← overviewの分析結果を踏まえて課題を導出
+    ↓ 参照
+strategy（成長戦略）← issuesから論理的に導かれる戦略を提案
+    ↓ 参照
+effects（効果試算）← strategyの施策に対する効果を試算
+    ↓ 参照
+roadmap（ロードマップ）← strategyの施策を時系列で配置
+```

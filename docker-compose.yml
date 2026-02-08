@@ -5,4 +5,5 @@ services:
       - .env
     volumes:
       - ./data:/app/data
+      - ./src:/app/src
     command: python financial_analyzer.py

@@ -67,14 +67,8 @@ class SectionGenerator:
 """
         shortened = self._call_llm_with_log(prompt, f"{section_name}（短縮）")
 
-        # 短縮後も超過していたら警告
         new_len = len(shortened)
-        if new_len > limit:
-            print(f"  ⚠ 短縮後も{new_len}字で超過。強制切り詰めを適用...")
-            # 最終手段：強制切り詰め（文末で切る）
-            shortened = shortened[:limit - 3] + "..."
-
-        print(f"  → {current_len}字 → {len(shortened)}字に短縮完了")
+        print(f"  → {current_len}字 → {new_len}字に短縮完了")
         return shortened
 
     @property
