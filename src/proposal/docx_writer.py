@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Optional, Union
 
 from ..common.config import Config, default_config
-from ..common.debug import debug_log, debug_docx_processing
+from ..common.debug import debug_log
 
 
 class DocxWriter:

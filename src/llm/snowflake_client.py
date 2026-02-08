@@ -4,10 +4,11 @@ Snowflake Cortex LLM クライアントモジュール
 Snowflake Cortexへの接続とLLM呼び出し機能を提供
 """
 
+import json
 import os
 from typing import Optional
 
-from ..common.constants import DEFAULT_LLM_MODEL, DEFAULT_CROSS_REGION
+from ..common.constants import DEFAULT_LLM_MODEL, DEFAULT_CROSS_REGION, DEFAULT_MAX_TOKENS
 
 
 def get_snowflake_connection():
@@ -38,6 +39,7 @@ def call_cortex_llm(
     prompt: str,
     model: Optional[str] = None,
     region: Optional[str] = None,
+    max_tokens: Optional[int] = None,
 ) -> str:
     """
     Snowflake Cortex LLMを呼び出す
@@ -46,6 +48,7 @@ def call_cortex_llm(
         prompt: LLMに送るプロンプト
         model: 使用するモデル名 (claude-sonnet-4-5, llama3.1-70b, etc.)
         region: クロスリージョン推論のリージョン (AWS_APJ, AWS_US, AWS_EU, ANY_REGION, etc.)
+        max_tokens: 最大出力トークン数
 
     Returns:
         LLMからの応答テキスト
@@ -57,6 +60,8 @@ def call_cortex_llm(
         model = DEFAULT_LLM_MODEL
     if region is None:
         region = DEFAULT_CROSS_REGION
+    if max_tokens is None:
+        max_tokens = DEFAULT_MAX_TOKENS
 
     conn = get_snowflake_connection()
     cursor = conn.cursor()
@@ -65,16 +70,27 @@ def call_cortex_llm(
         # クロスリージョン推論を有効化（ACCOUNTADMINロールが必要）
         cursor.execute(f"ALTER ACCOUNT SET CORTEX_ENABLED_CROSS_REGION = '{region}'")
 
-        escaped_prompt = prompt.replace("'", "''")
-        query = f"""
+        messages = [{"role": "user", "content": prompt}]
+        options = {"max_tokens": max_tokens}
+        messages_json = json.dumps(messages, ensure_ascii=False)
+        options_json = json.dumps(options)
+        query = """
         SELECT SNOWFLAKE.CORTEX.COMPLETE(
-            '{model}',
-            '{escaped_prompt}'
+            %s,
+            PARSE_JSON(%s),
+            PARSE_JSON(%s)
         ) AS response
         """
-        cursor.execute(query)
+        cursor.execute(query, (model, messages_json, options_json))
         result = cursor.fetchone()
-        return result[0] if result else ""
+        if not result or not result[0]:
+            return ""
+        response = json.loads(result[0])
+        choice = response.get("choices", [{}])[0]
+        finish_reason = choice.get("finish_reason", "")
+        if finish_reason == "length":
+            print(f"[WARNING] LLM出力がmax_tokens上限に到達し途中で打ち切られました (max_tokens={max_tokens})")
+        return choice.get("messages", "")
     finally:
         cursor.close()
         conn.close()

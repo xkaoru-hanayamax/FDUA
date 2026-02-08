@@ -145,8 +145,3 @@ class ContextBuilder:
     def get_securities_report_markdown(self) -> Optional[str]:
         """有価証券報告書（Markdown）を取得"""
         return self.securities_report_markdown
-
-    # 後方互換性のため維持
-    def get_pdf_full_text(self) -> Optional[str]:
-        """有価証券報告書（Markdown形式）を取得（後方互換性）"""
-        return self.securities_report_markdown

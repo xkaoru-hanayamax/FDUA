@@ -169,6 +169,7 @@ def _create_integration_prompt(merged_text: str) -> str:
 【重要】
 - 各セクションの主要な論点と具体的数値は維持すること
 - 5つのセクション見出し「# セクション名」は必ず出力すること
+- 「【総文字数: ...】」等の文字数カウントやメタ情報は一切含めないこと。提案書の本文のみを出力すること
 
 【統合対象テキスト】
 {merged_text}
@@ -208,7 +209,7 @@ def check_and_truncate(state: ProposalAgentState) -> dict[str, Any]:
     prompt = _create_integration_prompt(merged_text)
 
     # LLM呼び出し
-    response = call_cortex_llm(prompt)
+    response = call_cortex_llm(prompt, max_tokens=32000)
     debug_llm_call("全体統合処理", prompt, response)
 
     logs.append({
