@@ -76,31 +76,15 @@ docker compose run --rm snowflake-llm python -m cli.analyze_financial 12044
 
 ```bash
 # 全10社の提案書を生成
-docker compose run --rm snowflake-llm python -m cli.generate_proposal --all
+docker compose run --rm snowflake-llm python -m cli.run_agent --all
 
 # 1社のみ生成
-docker compose run --rm snowflake-llm python -m cli.generate_proposal 12044
+docker compose run --rm snowflake-llm python -m cli.run_agent --code 12044
 ```
 
-出力: `data/proposals/{企業コード}.docx`
-
-## 一括実行（推奨）
-
-財務分析→提案書生成を一括実行し、プロンプトログを保存：
-
-```bash
-# 事前にPDF変換を実行（初回のみ）
-docker compose run --rm snowflake-llm python -m cli.convert_pdf --all
-
-# 一括実行
-docker compose run --rm snowflake-llm python -m cli.run_all
-```
-
-出力：
-- `data/output/{企業コード}_securities.md` - 有価証券報告書Markdown（10社分）
-- `data/output/{企業コード}_financial.md` - 財務分析結果Markdown（10社分）
+出力:
 - `data/proposals/{企業コード}.docx` - 提案書（10社分）
-- `data/prompt_log.txt` - 全プロンプトログ
+- `data/prompt_log.txt` - プロンプトログ
 
 ## CLIオプション
 
@@ -274,7 +258,7 @@ docker compose run --rm snowflake-llm python -m cli.run_agent --code 12044 --deb
 | 項目 | 内容 |
 |------|------|
 | **入力** | `sections`（全5セクション） |
-| **処理** | 合計15,000字以内に収まるよう必要に応じてLLMで要約 |
+| **処理** | 合計13,000字以内に収まるよう必要に応じてLLMで要約 |
 | **出力** | `sections`（調整済み）, `total_char_count` |
 
 #### 9. write_docx（DOCX出力）
