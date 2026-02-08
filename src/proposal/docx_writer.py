@@ -1,16 +1,13 @@
 """
 DOCX出力モジュール
 
-提案書をDOCX形式で出力
+提案書をDOCX形式で出力（pandocによるマークダウン→DOCX変換）
 """
 
-import re
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Optional, Union
-
-from docx import Document
-from docx.shared import Pt
-from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 from ..common.config import Config, default_config
 from ..common.debug import debug_log, debug_docx_processing
@@ -44,10 +41,6 @@ class DocxWriter:
             提案書全体のテキスト
         """
         proposal = f"""成長戦略提案書
-
-対象企業コード: {company_code}
-対象企業所在地: {company_info.get('location', '')}
-対象企業業種: {company_info.get('industry', '')}
 
 {'=' * 60}
 
@@ -95,7 +88,7 @@ class DocxWriter:
         output_path: Optional[Union[str, Path]] = None,
     ) -> str:
         """
-        提案書をDOCX形式で保存
+        提案書をDOCX形式で保存（pandocによるマークダウン→DOCX変換）
 
         Args:
             company_code: 企業コード
@@ -114,19 +107,14 @@ class DocxWriter:
         # 出力ディレクトリを作成
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        doc = Document()
+        # pandocの存在確認
+        if shutil.which("pandoc") is None:
+            raise RuntimeError(
+                "pandocがインストールされていません。"
+                "Docker環境で実行するか、ローカルにpandocをインストールしてください。"
+            )
 
-        # タイトル
-        title = doc.add_heading("成長戦略提案書", 0)
-        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-        # 基本情報
-        doc.add_paragraph(f"対象企業コード: {company_code}")
-        doc.add_paragraph(f"対象企業所在地: {company_info.get('location', '')}")
-        doc.add_paragraph(f"対象企業業種: {company_info.get('industry', '')}")
-        doc.add_paragraph("")
-
-        # 各セクション
+        # セクションをマークダウンとして結合
         section_list = [
             ("1. 企業概要・分析", sections.get("overview", "")),
             ("2. 課題の抽出", sections.get("issues", "")),
@@ -135,16 +123,26 @@ class DocxWriter:
             ("5. ロードマップ", sections.get("roadmap", "")),
         ]
 
+        md_parts = ["# 成長戦略提案書\n"]
         for heading, content in section_list:
-            doc.add_heading(heading, 1)
             debug_log("docx_writer", f"セクション '{heading}' を出力中...", content[:500] if content else "（空）")
+            md_parts.append(f"# {heading}\n")
+            md_parts.append(content + "\n")
 
-            # マークダウンコンテンツをWord要素に変換して追加
-            self._parse_and_add_content(doc, content)
+        markdown_text = "\n".join(md_parts)
 
-        doc.save(str(output_path))
+        # pandocでマークダウン→DOCX変換（stdin経由）
+        result = subprocess.run(
+            ["pandoc", "-f", "markdown", "-t", "docx", "-o", str(output_path)],
+            input=markdown_text,
+            encoding="utf-8",
+            capture_output=True,
+        )
+
+        if result.returncode != 0:
+            raise RuntimeError(f"pandoc変換に失敗しました: {result.stderr}")
+
         print(f"提案書を保存しました: {output_path}")
-
         debug_log("docx_writer", f"DOCX出力完了: {output_path}")
 
         return str(output_path)
@@ -185,97 +183,6 @@ class DocxWriter:
                 f.write("\n" + "=" * 60 + "\n\n")
 
         return str(output_path)
-
-    def _is_table_line(self, line: str) -> bool:
-        """表の行かどうかを判定"""
-        stripped = line.strip()
-        return stripped.startswith("|") and stripped.endswith("|")
-
-    def _collect_table_lines(self, lines: list[str], start: int) -> tuple[list[str], int]:
-        """連続する表の行を収集"""
-        table_lines = []
-        i = start
-        while i < len(lines) and self._is_table_line(lines[i]):
-            table_lines.append(lines[i])
-            i += 1
-        return table_lines, i
-
-    def _add_table(self, doc: Document, table_lines: list[str]):
-        """マークダウン表をWord表に変換"""
-        rows = []
-        for line in table_lines:
-            # 区切り行（|---|---|）をスキップ
-            if re.match(r"^\|[-:\s|]+\|$", line.strip()):
-                continue
-            # セルを抽出
-            cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-            rows.append(cells)
-
-        if not rows:
-            return
-
-        # 表を作成
-        num_cols = len(rows[0])
-        table = doc.add_table(rows=len(rows), cols=num_cols)
-        table.style = "Table Grid"
-
-        for row_idx, row_data in enumerate(rows):
-            for col_idx, cell_text in enumerate(row_data):
-                if col_idx < num_cols:
-                    cell = table.rows[row_idx].cells[col_idx]
-                    cell.text = cell_text
-                    # セル内のフォントサイズを設定
-                    for paragraph in cell.paragraphs:
-                        for run in paragraph.runs:
-                            run.font.size = Pt(10.5)
-
-    def _add_list_item(self, doc: Document, line: str):
-        """箇条書き項目を追加"""
-        # インデントレベルを計算
-        indent_level = (len(line) - len(line.lstrip())) // 2
-        text = line.strip().lstrip("-*").strip()
-
-        p = doc.add_paragraph(text, style="List Bullet")
-        # インデント設定
-        if indent_level > 0:
-            p.paragraph_format.left_indent = Pt(18 * indent_level)
-        # フォントサイズ設定
-        for run in p.runs:
-            run.font.size = Pt(10.5)
-
-    def _parse_and_add_content(self, doc: Document, content: str):
-        """マークダウンコンテンツをWord要素に変換して追加"""
-        lines = content.split("\n")
-        i = 0
-        while i < len(lines):
-            line = lines[i]
-
-            # 表の検出（|で始まり|で終わる行が連続）
-            if self._is_table_line(line):
-                table_lines, i = self._collect_table_lines(lines, i)
-                self._add_table(doc, table_lines)
-                continue
-
-            # 見出しの検出（レベル順に判定）
-            if line.startswith("### "):
-                doc.add_heading(line[4:].strip(), 3)
-            elif line.startswith("## "):
-                doc.add_heading(line[3:].strip(), 2)
-            elif line.startswith("# "):
-                # セクション内の#見出しは2に落とす（セクション見出し自体が1なので）
-                doc.add_heading(line[2:].strip(), 2)
-
-            # 箇条書きの検出
-            elif line.strip().startswith("- ") or line.strip().startswith("* "):
-                self._add_list_item(doc, line)
-
-            # 通常段落
-            elif line.strip():
-                p = doc.add_paragraph(line.strip())
-                for run in p.runs:
-                    run.font.size = Pt(10.5)
-
-            i += 1
 
     def count_characters(
         self,
