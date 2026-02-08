@@ -353,3 +353,50 @@ effects（効果試算）← strategyの施策に対する効果を試算
     ↓ 参照
 roadmap（ロードマップ）← strategyの施策を時系列で配置
 ```
+
+## LangGraph Studio（開発・デバッグ用）
+
+LangGraph StudioはLangGraphエージェントの可視化・デバッグツールです。グラフの実行状態をリアルタイムで確認できます。
+
+### 起動方法
+
+```bash
+# LangGraph Studioを起動
+docker compose up langgraph-studio
+```
+
+起動後、以下のURLにアクセス：
+
+| URL | 説明 |
+|-----|------|
+| http://localhost:8123 | API エンドポイント |
+| http://localhost:8123/docs | API ドキュメント（Swagger UI） |
+| https://smith.langchain.com/studio/?baseUrl=http://localhost:8123 | Studio UI（Web版） |
+
+### Studio UIの使い方
+
+1. ブラウザで `https://smith.langchain.com/studio/?baseUrl=http://localhost:8123` を開く
+2. LangSmithアカウントでログイン（必要な場合）
+3. 左側のグラフ一覧から `proposal_agent` を選択
+4. 「New Thread」でスレッドを作成
+5. 入力に以下のJSON形式で企業コードを指定して実行：
+
+```json
+{
+  "company_code": "12044"
+}
+```
+
+### 主な機能
+
+- **グラフ可視化**: ノード間の接続とフローを視覚的に確認
+- **ステップ実行**: 各ノードの入出力をリアルタイムで確認
+- **状態確認**: 実行中のstate（財務データ、課題リスト、生成セクション等）を閲覧
+- **デバッグ**: エラー発生時のスタックトレースと状態を確認
+
+### 停止方法
+
+```bash
+# Ctrl+C で停止、または別ターミナルで
+docker compose down langgraph-studio
+```

@@ -104,6 +104,33 @@ class Config:
         """
         return self._data_dir / "prompt_log.txt"
 
+    def get_sections_dir(self, company_code: str) -> Path:
+        """
+        企業コードからセクションマークダウン保存ディレクトリを取得
+
+        Args:
+            company_code: 企業コード
+
+        Returns:
+            セクション保存ディレクトリ
+        """
+        path = self.output_dir / company_code / "sections"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def get_section_path(self, company_code: str, section_key: str) -> Path:
+        """
+        セクションマークダウンファイルパスを取得
+
+        Args:
+            company_code: 企業コード
+            section_key: セクションキー（overview, issues, strategy, effects, roadmap）
+
+        Returns:
+            マークダウンファイルパス
+        """
+        return self.get_sections_dir(company_code) / f"{section_key}.md"
+
 
 # デフォルトのConfig インスタンス
 default_config = Config()

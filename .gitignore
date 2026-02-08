@@ -40,4 +40,7 @@ data/*.txt
 *.log
 prompt_log.txt
 
+# LangGraph
+.langgraph_api
+
 claude.md

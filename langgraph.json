@@ -1,0 +1,11 @@
+{
+  "$schema": "https://langchain-ai.github.io/langgraph/langgraph.json",
+  "graphs": {
+    "proposal_agent": "src.graph.proposal_agent:create_proposal_agent"
+  },
+  "env": ".env",
+  "python_version": "3.11",
+  "dependencies": [
+    "."
+  ]
+}

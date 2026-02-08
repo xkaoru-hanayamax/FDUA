@@ -1,15 +1,18 @@
 """
 セクション生成ノード
 
-提案書の各セクションを生成する
+提案書の各セクションを生成する（マークダウン形式）
+各セクションはマークダウンファイルとして保存される
 """
 
+from pathlib import Path
 from typing import Any
 
 from ..states.proposal_state import ProposalAgentState
 from ...llm import call_cortex_llm
-from ...common.constants import SECTION_CHAR_LIMITS, EVALUATION_CRITERIA
+from ...common.constants import EVALUATION_CRITERIA
 from ...common.debug import debug_llm_call, debug_log
+from ...common.config import Config
 
 
 def _call_llm_with_log(
@@ -31,6 +34,35 @@ def _call_llm_with_log(
         "response": response,
     })
     return response
+
+
+def _save_section_markdown(
+    company_code: str,
+    section_key: str,
+    content: str,
+    config_dict: dict,
+) -> Path:
+    """
+    セクションをマークダウンファイルとして保存
+
+    Args:
+        company_code: 企業コード
+        section_key: セクションキー
+        content: セクション内容
+        config_dict: 設定辞書
+
+    Returns:
+        保存したファイルパス
+    """
+    if config_dict.get("data_dir"):
+        config = Config(data_dir=config_dict["data_dir"])
+    else:
+        config = Config()
+
+    file_path = config.get_section_path(company_code, section_key)
+    file_path.write_text(content, encoding="utf-8")
+    print(f"  - 保存: {file_path}")
+    return file_path
 
 
 def _build_context(state: ProposalAgentState) -> str:
@@ -123,8 +155,9 @@ def generate_overview(state: ProposalAgentState) -> dict[str, Any]:
     print("[generate_overview] セクション1: 企業概要・分析を生成中...")
 
     context = _build_context(state)
+    company_code = state["company_code"]
     company_info = state.get("company_info", {})
-    limit = SECTION_CHAR_LIMITS["overview"]
+    config_dict = state.get("config", {})
     logs: list[dict] = []
 
     prompt = f"""【役割】
@@ -132,19 +165,17 @@ def generate_overview(state: ProposalAgentState) -> dict[str, Any]:
 
 {EVALUATION_CRITERIA}
 
-【出力形式の厳守事項】
-1. 必ず{limit}字以内で作成すること（厳守・超過不可）
-2. マークダウン記法（#, ##, *, -など）は絶対に使用しないこと
-3. 見出しは以下の記号で階層化すること：
-   - 大見出し: ■
-   - 中見出し: ●
-   - 小見出し: ・
+【出力形式】
+マークダウン形式で出力してください。
+- 大見出し: ## 見出し
+- 中見出し: ### 見出し
+- 箇条書き: - 項目
 
 【作成するセクション】
-1. 企業概要・分析
-   1.1 企業概要（事業内容、沿革、強み）
-   1.2 外部環境分析（業界動向、地域特性）
-   1.3 財務情報分析（過去3年の推移と傾向）
+企業概要・分析
+- 企業概要（事業内容、沿革、強み）
+- 外部環境分析（業界動向、地域特性）
+- 財務情報分析（過去3年の推移と傾向）
 
 【内容要件】
 - 具体的な数値やデータを引用すること
@@ -159,13 +190,16 @@ def generate_overview(state: ProposalAgentState) -> dict[str, Any]:
 
     response = _call_llm_with_log(prompt, "企業概要・分析", logs)
 
+    # マークダウンファイルとして保存
+    _save_section_markdown(company_code, "overview", response, config_dict)
+
     sections = state.get("sections", {})
     sections["overview"] = response
 
     section_char_counts = state.get("section_char_counts", {})
     section_char_counts["overview"] = len(response)
 
-    print(f"  - 文字数: {len(response)}字 (上限: {limit}字)")
+    print(f"  - 文字数: {len(response)}字")
 
     return {
         "sections": sections,
@@ -187,11 +221,12 @@ def generate_issues(state: ProposalAgentState) -> dict[str, Any]:
     print("[generate_issues] セクション2: 課題の抽出を生成中...")
 
     context = _build_context(state)
+    company_code = state["company_code"]
     company_info = state.get("company_info", {})
+    config_dict = state.get("config", {})
     issues = state.get("issues", [])
     sections = state.get("sections", {})
     overview_section = sections.get("overview", "")
-    limit = SECTION_CHAR_LIMITS["issues"]
     logs: list[dict] = []
 
     # 課題を構造化してフォーマット
@@ -203,19 +238,17 @@ def generate_issues(state: ProposalAgentState) -> dict[str, Any]:
 
 {EVALUATION_CRITERIA}
 
-【出力形式の厳守事項】
-1. 必ず{limit}字以内で作成すること（厳守・超過不可）
-2. マークダウン記法（#, ##, *, -など）は絶対に使用しないこと
-3. 見出しは以下の記号で階層化すること：
-   - 大見出し: ■
-   - 中見出し: ●
-   - 小見出し: ・
+【出力形式】
+マークダウン形式で出力してください。
+- 大見出し: ## 見出し
+- 中見出し: ### 見出し
+- 箇条書き: - 項目
 
 【作成するセクション】
-2. 課題の抽出
-   2.1 財務面の課題（収益性、安定性、キャッシュフロー等）
-   2.2 事業面の課題（市場環境、競争力、技術等）
-   2.3 人材・組織面の課題（人手不足、2024年問題、働き方改革等）
+課題の抽出
+- 財務面の課題（収益性、安定性、キャッシュフロー等）
+- 事業面の課題（市場環境、競争力、技術等）
+- 人材・組織面の課題（人手不足、2024年問題、働き方改革等）
 
 【企業概要・分析（前セクション）】
 {overview_section}
@@ -245,13 +278,16 @@ def generate_issues(state: ProposalAgentState) -> dict[str, Any]:
 
     response = _call_llm_with_log(prompt, "課題の抽出", logs)
 
+    # マークダウンファイルとして保存
+    _save_section_markdown(company_code, "issues", response, config_dict)
+
     sections = state.get("sections", {})
     sections["issues"] = response
 
     section_char_counts = state.get("section_char_counts", {})
     section_char_counts["issues"] = len(response)
 
-    print(f"  - 文字数: {len(response)}字 (上限: {limit}字)")
+    print(f"  - 文字数: {len(response)}字")
 
     return {
         "sections": sections,
@@ -272,24 +308,24 @@ def generate_strategy(state: ProposalAgentState) -> dict[str, Any]:
     """
     print("[generate_strategy] セクション3: 成長戦略・提案を生成中...")
 
-    # 後半セクションでは有価証券報告書を短めに
     context = _build_context(state)
+    company_code = state["company_code"]
     company_info = state.get("company_info", {})
+    config_dict = state.get("config", {})
     sections = state.get("sections", {})
     issues_section = sections.get("issues", "")
     issues = state.get("issues", [])
     insights = state.get("insights", [])
-    limit = SECTION_CHAR_LIMITS["strategy"]
     logs: list[dict] = []
 
     # 構造化された課題データを活用
     issues_by_priority = _format_issues_by_priority(issues)
-    high_priority_issues = "\n".join([f"・{i}" for i in issues_by_priority["high"]]) or "（なし）"
+    high_priority_issues = "\n".join([f"- {i}" for i in issues_by_priority["high"]]) or "（なし）"
 
     # 知見がある場合のみ含める
     insights_section = ""
     if insights:
-        insights_text = "\n".join([f"・{insight}" for insight in insights])
+        insights_text = "\n".join([f"- {insight}" for insight in insights])
         insights_section = f"""
 【調査から得られた知見】
 {insights_text}
@@ -300,19 +336,17 @@ def generate_strategy(state: ProposalAgentState) -> dict[str, Any]:
 
 {EVALUATION_CRITERIA}
 
-【出力形式の厳守事項】
-1. 必ず{limit}字以内で作成すること（厳守・超過不可）
-2. マークダウン記法（#, ##, *, -など）は絶対に使用しないこと
-3. 見出しは以下の記号で階層化すること：
-   - 大見出し: ■
-   - 中見出し: ●
-   - 小見出し: ・
+【出力形式】
+マークダウン形式で出力してください。
+- 大見出し: ## 見出し
+- 中見出し: ### 見出し
+- 箇条書き: - 項目
 
 【作成するセクション】
-3. 成長戦略・提案
-   3.1 短期施策（1年以内）：即効性のある改善策
-   3.2 中期施策（1-3年）：競争力強化策
-   3.3 長期施策（3-5年）：持続的成長に向けた投資
+成長戦略・提案
+- 短期施策（1年以内）：即効性のある改善策
+- 中期施策（1-3年）：競争力強化策
+- 長期施策（3-5年）：持続的成長に向けた投資
 
 【最優先で対応すべき課題（重要度: high）】
 {high_priority_issues}
@@ -338,12 +372,15 @@ def generate_strategy(state: ProposalAgentState) -> dict[str, Any]:
 
     response = _call_llm_with_log(prompt, "成長戦略・提案", logs)
 
+    # マークダウンファイルとして保存
+    _save_section_markdown(company_code, "strategy", response, config_dict)
+
     sections["strategy"] = response
 
     section_char_counts = state.get("section_char_counts", {})
     section_char_counts["strategy"] = len(response)
 
-    print(f"  - 文字数: {len(response)}字 (上限: {limit}字)")
+    print(f"  - 文字数: {len(response)}字")
 
     return {
         "sections": sections,
@@ -364,12 +401,12 @@ def generate_effects(state: ProposalAgentState) -> dict[str, Any]:
     """
     print("[generate_effects] セクション4: 効果試算を生成中...")
 
-    # 効果試算では財務データが重要、有価証券報告書は短く
     context = _build_context(state)
+    company_code = state["company_code"]
+    config_dict = state.get("config", {})
     sections = state.get("sections", {})
     strategy_section = sections.get("strategy", "")
     issues = state.get("issues", [])
-    limit = SECTION_CHAR_LIMITS["effects"]
     logs: list[dict] = []
 
     # 課題の数を把握（効果試算の根拠に使用）
@@ -380,18 +417,16 @@ def generate_effects(state: ProposalAgentState) -> dict[str, Any]:
 
 {EVALUATION_CRITERIA}
 
-【出力形式の厳守事項】
-1. 必ず{limit}字以内で作成すること（厳守・超過不可）
-2. マークダウン記法（#, ##, *, -など）は絶対に使用しないこと
-3. 見出しは以下の記号で階層化すること：
-   - 大見出し: ■
-   - 中見出し: ●
-   - 小見出し: ・
+【出力形式】
+マークダウン形式で出力してください。
+- 大見出し: ## 見出し
+- 中見出し: ### 見出し
+- 箇条書き: - 項目
 
 【作成するセクション】
-4. 効果試算
-   4.1 売上・利益への影響（定量効果）
-   4.2 定性的効果（ブランド、人材、技術力等）
+効果試算
+- 売上・利益への影響（定量効果）
+- 定性的効果（ブランド、人材、技術力等）
 
 【提案した成長戦略】
 {strategy_section}
@@ -413,12 +448,15 @@ def generate_effects(state: ProposalAgentState) -> dict[str, Any]:
 
     response = _call_llm_with_log(prompt, "効果試算", logs)
 
+    # マークダウンファイルとして保存
+    _save_section_markdown(company_code, "effects", response, config_dict)
+
     sections["effects"] = response
 
     section_char_counts = state.get("section_char_counts", {})
     section_char_counts["effects"] = len(response)
 
-    print(f"  - 文字数: {len(response)}字 (上限: {limit}字)")
+    print(f"  - 文字数: {len(response)}字")
 
     return {
         "sections": sections,
@@ -439,12 +477,12 @@ def generate_roadmap(state: ProposalAgentState) -> dict[str, Any]:
     """
     print("[generate_roadmap] セクション5: ロードマップを生成中...")
 
-    # ロードマップでは有価証券報告書は最小限
     context = _build_context(state)
+    company_code = state["company_code"]
+    config_dict = state.get("config", {})
     sections = state.get("sections", {})
     strategy_section = sections.get("strategy", "")
     issues = state.get("issues", [])
-    limit = SECTION_CHAR_LIMITS["roadmap"]
     logs: list[dict] = []
 
     # 重要課題を施策の優先順位付けに活用
@@ -456,18 +494,16 @@ def generate_roadmap(state: ProposalAgentState) -> dict[str, Any]:
 
 {EVALUATION_CRITERIA}
 
-【出力形式の厳守事項】
-1. 必ず{limit}字以内で作成すること（厳守・超過不可）
-2. マークダウン記法（#, ##, *, -など）は絶対に使用しないこと
-3. 見出しは以下の記号で階層化すること：
-   - 大見出し: ■
-   - 中見出し: ●
-   - 小見出し: ・
+【出力形式】
+マークダウン形式で出力してください。
+- 大見出し: ## 見出し
+- 中見出し: ### 見出し
+- 箇条書き: - 項目
 
 【作成するセクション】
-5. ロードマップ
-   5.1 実行計画（フェーズ別の取り組み内容）
-   5.2 マイルストーン（重要な節目と達成目標）
+ロードマップ
+- 実行計画（フェーズ別の取り組み内容）
+- マイルストーン（重要な節目と達成目標）
 
 【提案した成長戦略】
 {strategy_section}
@@ -488,12 +524,15 @@ def generate_roadmap(state: ProposalAgentState) -> dict[str, Any]:
 
     response = _call_llm_with_log(prompt, "ロードマップ", logs)
 
+    # マークダウンファイルとして保存
+    _save_section_markdown(company_code, "roadmap", response, config_dict)
+
     sections["roadmap"] = response
 
     section_char_counts = state.get("section_char_counts", {})
     section_char_counts["roadmap"] = len(response)
 
-    print(f"  - 文字数: {len(response)}字 (上限: {limit}字)")
+    print(f"  - 文字数: {len(response)}字")
 
     return {
         "sections": sections,

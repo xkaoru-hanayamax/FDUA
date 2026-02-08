@@ -17,5 +17,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# パッケージとしてインストール（相対インポート対応）
+RUN pip install -e .
+
 # デフォルトコマンド: 接続テスト
 CMD ["python", "-c", "from src.llm import test_connection; test_connection()"]
