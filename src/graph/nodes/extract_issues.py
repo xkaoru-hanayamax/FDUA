@@ -72,7 +72,6 @@ def extract_issues(state: ProposalAgentState) -> dict[str, Any]:
     if not financial_markdown or not securities_markdown:
         return {
             "issues": [],
-            "issue_categories": {},
             "errors": state.get("errors", []) + ["データが読み込まれていません"],
         }
 
@@ -128,14 +127,6 @@ def extract_issues(state: ProposalAgentState) -> dict[str, Any]:
     response = _call_llm_with_log(prompt, "統合課題抽出", logs)
     all_issues = _parse_issues_json(response)
 
-    # カテゴリ別に分類
-    categories: dict[str, list[Issue]] = {}
-    for issue in all_issues:
-        cat = issue.get("category", "その他")
-        if cat not in categories:
-            categories[cat] = []
-        categories[cat].append(issue)
-
     # 重要度でソート
     severity_order = {"high": 0, "medium": 1, "low": 2}
     sorted_issues = sorted(
@@ -144,11 +135,8 @@ def extract_issues(state: ProposalAgentState) -> dict[str, Any]:
     )
 
     print(f"  - 抽出された課題: {len(sorted_issues)}件")
-    for cat, cat_issues in categories.items():
-        print(f"    - {cat}: {len(cat_issues)}件")
 
     return {
         "issues": sorted_issues,
-        "issue_categories": categories,
         "prompt_logs": logs,
     }

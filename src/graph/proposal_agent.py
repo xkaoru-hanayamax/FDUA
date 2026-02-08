@@ -115,7 +115,6 @@ def run_proposal_agent(
         "company_code": company_code,
         "config": {"data_dir": data_dir} if data_dir else {},
         "issues": [],
-        "issue_categories": {},
         "required_info": [],
         "missing_info": [],
         "search_queries": [],

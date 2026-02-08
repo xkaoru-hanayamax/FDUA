@@ -227,7 +227,7 @@ docker compose run --rm snowflake-llm python -m cli.run_agent --code 12044 --deb
 |------|------|
 | **入力** | `financial_markdown`, `securities_markdown`, `company_info` |
 | **処理** | 1回のLLM呼び出しで財務・有報から課題を統合抽出（JSON形式で出力をパース、カテゴリ別分類・重要度ソート） |
-| **出力** | `issues`（課題リスト）, `issue_categories`（カテゴリ別分類）, `prompt_logs` |
+| **出力** | `issues`（課題リスト、重要度順）, `prompt_logs` |
 
 #### 3. generate_overview（企業概要・分析）
 

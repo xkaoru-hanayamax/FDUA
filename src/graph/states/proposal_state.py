@@ -50,9 +50,8 @@ class ProposalAgentState(TypedDict, total=False):
     financial_markdown: str
     securities_markdown: str
 
-    # 課題抽出エージェントの出力
+    # 課題抽出の出力
     issues: list[Issue]
-    issue_categories: dict[str, list[Issue]]
 
     # 情報整理エージェントの出力
     required_info: list[str]
