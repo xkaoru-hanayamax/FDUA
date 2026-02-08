@@ -10,7 +10,7 @@ from typing import Any
 
 from ..states.proposal_state import ProposalAgentState
 from ...llm import call_cortex_llm
-from ...common.constants import EVALUATION_CRITERIA
+from ...common.constants import EVALUATION_CRITERIA, SECTION_CHAR_LIMITS
 from ...common.debug import debug_llm_call, debug_log
 from ...common.config import Config
 
@@ -171,6 +171,9 @@ def generate_overview(state: ProposalAgentState) -> dict[str, Any]:
 - 中見出し: ### 見出し
 - 箇条書き: - 項目
 
+【文字数制限】
+{SECTION_CHAR_LIMITS["overview"]}字以内で出力してください。これは厳守です。
+
 【作成するセクション】
 企業概要・分析
 - 企業概要（事業内容、沿革、強み）
@@ -243,6 +246,9 @@ def generate_issues(state: ProposalAgentState) -> dict[str, Any]:
 - 大見出し: ## 見出し
 - 中見出し: ### 見出し
 - 箇条書き: - 項目
+
+【文字数制限】
+{SECTION_CHAR_LIMITS["issues"]}字以内で出力してください。これは厳守です。
 
 【作成するセクション】
 課題の抽出
@@ -342,6 +348,9 @@ def generate_strategy(state: ProposalAgentState) -> dict[str, Any]:
 - 中見出し: ### 見出し
 - 箇条書き: - 項目
 
+【文字数制限】
+{SECTION_CHAR_LIMITS["strategy"]}字以内で出力してください。これは厳守です。
+
 【作成するセクション】
 成長戦略・提案
 - 短期施策（1年以内）：即効性のある改善策
@@ -423,6 +432,9 @@ def generate_effects(state: ProposalAgentState) -> dict[str, Any]:
 - 中見出し: ### 見出し
 - 箇条書き: - 項目
 
+【文字数制限】
+{SECTION_CHAR_LIMITS["effects"]}字以内で出力してください。これは厳守です。
+
 【作成するセクション】
 効果試算
 - 売上・利益への影響（定量効果）
@@ -499,6 +511,9 @@ def generate_roadmap(state: ProposalAgentState) -> dict[str, Any]:
 - 大見出し: ## 見出し
 - 中見出し: ### 見出し
 - 箇条書き: - 項目
+
+【文字数制限】
+{SECTION_CHAR_LIMITS["roadmap"]}字以内で出力してください。これは厳守です。
 
 【作成するセクション】
 ロードマップ

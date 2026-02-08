@@ -228,6 +228,27 @@ def check_and_truncate(state: ProposalAgentState) -> dict[str, Any]:
                 print(f"  ⚠ {SECTION_NAMES[key]}の分割に失敗。元のテキストを使用。")
                 new_sections[key] = original_sections[key]
 
+    # 超過セクションの個別圧縮（最大2回リトライ）
+    for key in SECTION_KEYS:
+        limit = SECTION_CHAR_LIMITS.get(key, 99999)
+        for attempt in range(2):
+            if key in new_sections and len(new_sections[key]) > limit:
+                current_len = len(new_sections[key])
+                print(f"  ⚠ {SECTION_NAMES[key]}が{current_len}字で上限{limit}字を超過。圧縮リトライ({attempt+1}/2)...")
+                compress_prompt = f"""以下の文章を{limit}字以内に圧縮してください。
+内容の要点と具体的数値は維持し、冗長な表現や重複を削って自然な文章のまま短縮すること。
+マークダウン形式を維持すること。文字数カウント等のメタ情報は含めないこと。
+
+{new_sections[key]}"""
+                compressed = call_cortex_llm(compress_prompt)
+                if compressed and len(compressed) < current_len:
+                    new_sections[key] = compressed
+                    print(f"    → {len(compressed)}字に圧縮")
+                else:
+                    break
+            else:
+                break
+
     # 文字数の再計算
     section_char_counts = {key: len(text) for key, text in new_sections.items()}
     total_chars = sum(section_char_counts.values())
