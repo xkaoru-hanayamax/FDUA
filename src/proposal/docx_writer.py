@@ -12,6 +12,7 @@ from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 from ..common.config import Config, default_config
+from ..common.debug import debug_log, debug_docx_processing
 
 
 class DocxWriter:
@@ -135,11 +136,18 @@ class DocxWriter:
 
         for heading, content in section_list:
             doc.add_heading(heading, 1)
+            debug_log("docx_writer", f"セクション '{heading}' を出力中...", content[:500] if content else "（空）")
+
             # 段落を追加（空行で分割）
             for para in content.split("\n"):
                 if para.strip():
                     # Markdown見出し記法を除去
                     cleaned = para.lstrip("#").strip()
+
+                    # 除去が発生した場合はデバッグログ出力
+                    if para.strip() != cleaned:
+                        debug_docx_processing(para.strip(), cleaned)
+
                     p = doc.add_paragraph(cleaned)
                     # フォントサイズ設定
                     for run in p.runs:
@@ -147,6 +155,9 @@ class DocxWriter:
 
         doc.save(str(output_path))
         print(f"提案書を保存しました: {output_path}")
+
+        debug_log("docx_writer", f"DOCX出力完了: {output_path}")
+
         return str(output_path)
 
     def save_prompt_log(

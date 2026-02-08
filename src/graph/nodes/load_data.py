@@ -9,6 +9,7 @@ from typing import Any
 from ..states.proposal_state import ProposalAgentState
 from ...proposal.context_builder import ContextBuilder
 from ...common.config import Config
+from ...common.debug import debug_log, debug_log_io
 
 
 def load_data(state: ProposalAgentState) -> dict[str, Any]:
@@ -49,6 +50,13 @@ def load_data(state: ProposalAgentState) -> dict[str, Any]:
     print(f"  - 財務Markdown: {len(financial_markdown)}文字")
     print(f"  - 有報Markdown: {len(securities_markdown)}文字")
     print(f"  - 企業情報: {company_info}")
+
+    # デバッグログ出力
+    debug_log(
+        "load_data",
+        f"企業コード {company_code} のデータ読み込み完了",
+        f"企業情報:\n{company_info}\n\n財務Markdown（先頭1000文字）:\n{financial_markdown[:1000]}\n\n有報Markdown（先頭1000文字）:\n{securities_markdown[:1000]}"
+    )
 
     return {
         "company_info": company_info,

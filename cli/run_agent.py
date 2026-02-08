@@ -16,6 +16,7 @@ load_dotenv()
 from src.graph import run_proposal_agent
 from src.common.constants import COMPANY_CODES
 from src.common.config import Config
+from src.common.debug import set_debug_mode, is_debug_mode
 
 
 def save_prompt_log(
@@ -83,8 +84,17 @@ def main():
         default=True,
         help="プロンプトログを保存（デフォルト: True）",
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="デバッグモード（全フローの入出力を詳細ログ出力）",
+    )
 
     args = parser.parse_args()
+
+    # デバッグモード設定
+    if args.debug:
+        set_debug_mode(True)
 
     # 引数チェック
     if not args.code and not args.all:

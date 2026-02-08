@@ -9,6 +9,7 @@ from typing import Any
 from ..states.proposal_state import ProposalAgentState
 from ...llm import call_cortex_llm
 from ...common.constants import SECTION_CHAR_LIMITS, PROPOSAL_MAX_CHARS
+from ...common.debug import debug_log, debug_llm_call
 
 
 def _truncate_section(
@@ -35,10 +36,12 @@ def _truncate_section(
 
     print(f"  ⚠ {section_name}が{current_len}字で上限{limit}字を超過。短縮中...")
 
-    prompt = f"""以下のテキストを{limit}字以内に短縮してください。
+    prompt = f"""【出力形式の厳守事項】
+1. 必ず{limit}字以内に収めること（厳守・超過不可）
+2. マークダウン記法（#, ##, *, -など）は絶対に使用しないこと
+3. 見出しは「■」「●」「・」の記号のみを使用すること
 
-【重要な要件】
-- 必ず{limit}字以内に収めること（厳守）
+【短縮要件】
 - 主要な論点と具体的な数値は維持すること
 - 冗長な表現や繰り返しを削除すること
 - 構造（見出し「■」「●」「・」）は維持すること
@@ -50,6 +53,9 @@ def _truncate_section(
 
     shortened = call_cortex_llm(prompt)
 
+    # デバッグログ出力
+    debug_llm_call(f"{section_name}（短縮）", prompt, shortened)
+
     logs.append({
         "section": f"{section_name}（短縮）",
         "prompt": prompt,
@@ -58,6 +64,12 @@ def _truncate_section(
 
     new_len = len(shortened)
     print(f"  → {current_len}字 → {new_len}字に短縮完了")
+
+    debug_log(
+        "truncation",
+        f"{section_name}: {current_len}字 → {new_len}字",
+    )
+
     return shortened
 
 
