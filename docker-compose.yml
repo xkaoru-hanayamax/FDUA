@@ -6,7 +6,8 @@ services:
     volumes:
       - ./data:/app/data
       - ./src:/app/src
-    command: python financial_analyzer.py
+      - ./cli:/app/cli
+    command: python -m cli.run_agent --all
 
   langgraph-studio:
     build: .
