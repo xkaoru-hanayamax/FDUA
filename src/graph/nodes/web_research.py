@@ -287,13 +287,6 @@ def web_research(state: ProposalAgentState) -> dict[str, Any]:
     md_path = _save_research_markdown(company_code, full_markdown, config_dict)
     print(f"  - 保存: {md_path}")
 
-    # --- insights 生成（各answerの冒頭を要約として使用） ---
-    insights = [
-        f"{qa['category']}: {qa['answer'][:100]}"
-        for qa in query_answers
-        if qa.get("answer")
-    ]
-
     # --- 情報十分性判定（answerが空でないクエリが3件以上） ---
     is_sufficient = len(answers_with_content) >= 3
 
@@ -303,7 +296,7 @@ def web_research(state: ProposalAgentState) -> dict[str, Any]:
     return {
         "search_queries": search_query_strings,
         "research_results": research_results,
-        "insights": insights,
+        "insights": [],  # research_results全文をcontextで活用
         "is_info_sufficient": is_sufficient,
         "prompt_logs": query_logs,
     }

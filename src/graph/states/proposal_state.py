@@ -53,9 +53,7 @@ class ProposalAgentState(TypedDict, total=False):
     # 課題抽出の出力
     issues: list[Issue]
 
-    # 情報整理エージェントの出力
-    required_info: list[str]
-    missing_info: list[str]
+    # Web調査クエリ
     search_queries: list[str]
 
     # Web調査エージェントの出力
@@ -64,7 +62,6 @@ class ProposalAgentState(TypedDict, total=False):
 
     # 情報十分性判定
     is_info_sufficient: bool
-    sufficiency_check_count: int  # 最大3回まで
 
     # 提案書セクション
     sections: dict[str, str]
