@@ -16,6 +16,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# tavily-python は依存解決が重いため別ステップでインストール
+RUN pip install --no-cache-dir tavily-python>=0.5.0
+
 COPY . .
 
 # パッケージとしてインストール（相対インポート対応）

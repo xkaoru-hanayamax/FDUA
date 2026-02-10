@@ -3,6 +3,7 @@
 """
 
 from .load_data import load_data
+from .web_research import web_research
 from .extract_issues import extract_issues
 from .sections import (
     generate_overview,
@@ -16,6 +17,7 @@ from .output import write_docx
 
 __all__ = [
     "load_data",
+    "web_research",
     "extract_issues",
     "generate_overview",
     "generate_issues",

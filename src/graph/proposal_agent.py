@@ -11,6 +11,7 @@ from langgraph.graph import StateGraph, START, END
 from .states.proposal_state import ProposalAgentState
 from .nodes import (
     load_data,
+    web_research,
     extract_issues,
     generate_overview,
     generate_issues,
@@ -27,7 +28,7 @@ def create_proposal_agent() -> StateGraph:
     提案書生成エージェントのグラフを構築
 
     フロー:
-    START → load_data → extract_issues → generate_overview → generate_issues
+    START → load_data → web_research → extract_issues → generate_overview → generate_issues
                                                                     │
                                                                     ▼
                                                           generate_strategy
@@ -54,6 +55,7 @@ def create_proposal_agent() -> StateGraph:
 
     # ノード追加
     graph.add_node("load_data", load_data)
+    graph.add_node("web_research", web_research)
     graph.add_node("extract_issues", extract_issues)
     graph.add_node("generate_overview", generate_overview)
     graph.add_node("generate_issues", generate_issues)
@@ -65,7 +67,8 @@ def create_proposal_agent() -> StateGraph:
 
     # エッジ追加（直線フロー）
     graph.add_edge(START, "load_data")
-    graph.add_edge("load_data", "extract_issues")
+    graph.add_edge("load_data", "web_research")
+    graph.add_edge("web_research", "extract_issues")
     graph.add_edge("extract_issues", "generate_overview")
     graph.add_edge("generate_overview", "generate_issues")
     graph.add_edge("generate_issues", "generate_strategy")
@@ -120,7 +123,7 @@ def run_proposal_agent(
         "search_queries": [],
         "research_results": {},
         "insights": [],
-        "is_info_sufficient": True,  # Web調査を削除したため常にTrue
+        "is_info_sufficient": False,
         "sufficiency_check_count": 0,
         "sections": {},
         "section_char_counts": {},
