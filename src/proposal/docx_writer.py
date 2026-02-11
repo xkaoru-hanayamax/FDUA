@@ -123,7 +123,11 @@ class DocxWriter:
             ("5. ロードマップ", sections.get("roadmap", "")),
         ]
 
-        md_parts = ["# 成長戦略提案書\n"]
+        company_name = company_info.get("company_name", "")
+        if company_name:
+            md_parts = [f"# {company_name} 成長戦略提案書\n"]
+        else:
+            md_parts = ["# 成長戦略提案書\n"]
         for heading, content in section_list:
             debug_log("docx_writer", f"セクション '{heading}' を出力中...", content[:500] if content else "（空）")
             md_parts.append(f"# {heading}\n")

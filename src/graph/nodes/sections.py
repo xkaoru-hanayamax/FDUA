@@ -168,6 +168,8 @@ def generate_overview(state: ProposalAgentState) -> dict[str, Any]:
     prompt = f"""【役割】
 あなたは建設業界に詳しい経営コンサルタントです。
 
+【対象企業】{company_info.get('company_name', '')}（企業コード: {company_code}、所在地: {company_info.get('location', '')}）
+
 {EVALUATION_CRITERIA}
 
 【出力形式】
@@ -243,6 +245,8 @@ def generate_issues(state: ProposalAgentState) -> dict[str, Any]:
 
     prompt = f"""【役割】
 あなたは建設業界に詳しい経営コンサルタントです。
+
+【対象企業】{company_info.get('company_name', '')}（企業コード: {company_code}、所在地: {company_info.get('location', '')}）
 
 {EVALUATION_CRITERIA}
 
@@ -336,6 +340,8 @@ def generate_strategy(state: ProposalAgentState) -> dict[str, Any]:
     prompt = f"""【役割】
 あなたは建設業界に詳しい経営コンサルタントです。
 
+【対象企業】{company_info.get('company_name', '')}（企業コード: {company_code}、所在地: {company_info.get('location', '')}）
+
 {EVALUATION_CRITERIA}
 
 【出力形式】
@@ -410,6 +416,7 @@ def generate_effects(state: ProposalAgentState) -> dict[str, Any]:
 
     context = _build_context(state)
     company_code = state["company_code"]
+    company_info = state.get("company_info", {})
     config_dict = state.get("config", {})
     sections = state.get("sections", {})
     strategy_section = sections.get("strategy", "")
@@ -422,6 +429,8 @@ def generate_effects(state: ProposalAgentState) -> dict[str, Any]:
 
     prompt = f"""【役割】
 あなたは建設業界に詳しい経営コンサルタントです。
+
+【対象企業】{company_info.get('company_name', '')}（企業コード: {company_code}、所在地: {company_info.get('location', '')}）
 
 {EVALUATION_CRITERIA}
 
@@ -493,6 +502,7 @@ def generate_roadmap(state: ProposalAgentState) -> dict[str, Any]:
 
     context = _build_context(state)
     company_code = state["company_code"]
+    company_info = state.get("company_info", {})
     config_dict = state.get("config", {})
     sections = state.get("sections", {})
     strategy_section = sections.get("strategy", "")
@@ -514,6 +524,8 @@ def generate_roadmap(state: ProposalAgentState) -> dict[str, Any]:
 
     prompt = f"""【役割】
 あなたは建設業界に詳しい経営コンサルタントです。
+
+【対象企業】{company_info.get('company_name', '')}（企業コード: {company_code}、所在地: {company_info.get('location', '')}）
 
 {EVALUATION_CRITERIA}
 

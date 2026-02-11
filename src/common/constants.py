@@ -59,16 +59,16 @@ DEFAULT_CHUNK_SIZE = 1200
 DEFAULT_CHUNK_OVERLAP = 200
 
 # 提案書文字数制限
-PROPOSAL_MAX_CHARS = 13000
+PROPOSAL_MAX_CHARS = 10000
 
-# セクション別文字数上限（厳格）
-# 合計: 11,900字 + ヘッダー等600字 = 約12,500字（余裕2,500字）
+# セクション別文字数目安
+# 合計: 約9,000字 + ヘッダー等500字 = 約9,500字（余裕500字）
 SECTION_CHAR_LIMITS = {
-    "overview": 2800,   # 企業概要・分析
-    "issues": 2300,     # 課題の抽出
-    "strategy": 3200,   # 成長戦略・提案
-    "effects": 1800,    # 効果試算
-    "roadmap": 1800,    # ロードマップ
+    "overview": 2200,   # 企業概要・分析
+    "issues": 1800,     # 課題の抽出
+    "strategy": 2500,   # 成長戦略・提案
+    "effects": 1300,    # 効果試算
+    "roadmap": 1200,    # ロードマップ
 }
 
 # 評価基準（プロンプトに組み込む）

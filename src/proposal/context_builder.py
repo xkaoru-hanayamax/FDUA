@@ -4,6 +4,7 @@
 財務分析結果（Markdown）と有価証券報告書（Markdown）を統合してLLMに渡すコンテキストを構築
 """
 
+import re
 from typing import Optional
 
 from ..common.config import Config, default_config
@@ -90,6 +91,14 @@ class ContextBuilder:
 
         with open(md_path, encoding="utf-8") as f:
             self.securities_report_markdown = f.read()
+
+        # 有価証券報告書から会社名を抽出
+        name_match = re.search(r"【会社名】\s*(.+?)(?:\s*【|$)", self.securities_report_markdown)
+        if name_match and self.company_info is not None:
+            self.company_info["company_name"] = name_match.group(1).strip()
+        elif self.company_info is not None:
+            self.company_info["company_name"] = ""
+
         return self.securities_report_markdown
 
     def load_all(self, company_code: str) -> None:

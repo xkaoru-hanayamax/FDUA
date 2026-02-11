@@ -88,15 +88,17 @@ def _split_sections_from_markdown(merged_text: str) -> dict[str, str]:
     return sections
 
 
-def _create_integration_prompt(merged_text: str) -> str:
+def _create_integration_prompt(merged_text: str, company_name: str = "") -> str:
     """
     全体統合処理用のプロンプトを生成
     """
     total_limit = PROPOSAL_MAX_CHARS - 500  # ヘッダー等の余裕
 
+    company_line = f"\n【対象企業】{company_name}\n" if company_name else ""
+
     return f"""【役割】
 あなたは建設業界に詳しい経営コンサルタントであり、提案書のエディターです。
-
+{company_line}
 【タスク】
 以下の5セクションからなる提案書全体を校正・最適化してください。
 
@@ -172,13 +174,16 @@ def _create_integration_prompt(merged_text: str) -> str:
 """
 
 
-def _create_compression_prompt(merged_text: str, current_chars: int, target_chars: int) -> str:
+def _create_compression_prompt(merged_text: str, current_chars: int, target_chars: int, company_name: str = "") -> str:
     """
     文字数削減に特化した圧縮プロンプトを生成
     """
     reduction = current_chars - target_chars
+    company_line = f"\n【対象企業】{company_name}\n" if company_name else ""
+
     return f"""【タスク】
 以下の提案書を圧縮してください。
+{company_line}
 
 【現在の文字数】{current_chars}字
 【目標文字数】{target_chars}字以内（現在より約{reduction}字の削減が必要）
@@ -213,6 +218,8 @@ def check_and_truncate(state: ProposalAgentState) -> dict[str, Any]:
     print("[check_and_truncate] 全体統合処理（品質向上・文字数調整）中...")
 
     sections = state.get("sections", {})
+    company_info = state.get("company_info", {})
+    company_name = company_info.get("company_name", "")
     logs: list[dict] = []
 
     # 元のセクションを保存
@@ -224,7 +231,7 @@ def check_and_truncate(state: ProposalAgentState) -> dict[str, Any]:
 
     # === Phase 1: 統合パス（品質向上 + 初回圧縮の試み）===
     merged_text = _merge_sections_as_markdown(sections)
-    prompt = _create_integration_prompt(merged_text)
+    prompt = _create_integration_prompt(merged_text, company_name)
 
     # LLM呼び出し
     response = call_cortex_llm(prompt, max_tokens=32000)
@@ -258,7 +265,7 @@ def check_and_truncate(state: ProposalAgentState) -> dict[str, Any]:
         print(f"  ⚠ {total_chars}字で上限{PROPOSAL_MAX_CHARS}字を超過。圧縮パス({attempt + 1}/2)...")
         merged = _merge_sections_as_markdown(new_sections)
         target = PROPOSAL_MAX_CHARS - 500
-        compress_prompt = _create_compression_prompt(merged, total_chars, target)
+        compress_prompt = _create_compression_prompt(merged, total_chars, target, company_name)
         compressed_response = call_cortex_llm(compress_prompt, max_tokens=32000)
         debug_llm_call(f"圧縮パス{attempt + 1}", compress_prompt, compressed_response)
 
