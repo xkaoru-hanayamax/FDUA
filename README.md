@@ -1,6 +1,6 @@
 # 建設業向け事業提案システム
 
-Snowflake Cortex LLMを活用して、建設業10社の財務データと有価証券報告書から成長戦略提案書を自動生成するシステム。
+Snowflake Cortex LLMとTavily Search APIを活用して、建設業10社の財務データ・有価証券報告書・Web調査から成長戦略提案書を自動生成するシステム。
 
 ## 構造
 
@@ -22,6 +22,7 @@ SNOWFLAKE_PASSWORD=your_password
 SNOWFLAKE_ACCOUNT=your_account
 SNOWFLAKE_WAREHOUSE=your_warehouse
 SNOWFLAKE_ROLE=ACCOUNTADMIN
+TAVILY_API_KEY=your_tavily_api_key
 ```
 
 ### 2. データファイルの配置
@@ -120,9 +121,11 @@ LangGraphを使用したエージェントベースの提案書生成システ�
 
 ### 特徴
 
+- **Web調査の統合**: Tavily Search APIで企業ごとに地域特性・業界動向・GX/DX・人材市場の最新情報を自動収集し、全セクションの生成コンテキストに活用
+- **セクション見出しテンプレート**: `SECTION_HEADING_TEMPLATES`で5セクションの`##`/`###`見出し構造を定義し、全10社で統一した章立てを保証
+- **二段階の文字数制御**: 各セクション生成では目安文字数のみ提示し、最終統合処理（`check_and_truncate`）で総文字数13,000字以内を厳守
 - **評価基準の組み込み**: コンペの評価基準（地域性、業界特性、GX/DX対応等）をプロンプトに明示的に組み込み
 - **セクション間の論理的接続**: 「過去分析→課題→未来提案」の一貫した因果関係を維持
-- **統合的な課題抽出**: 財務データと有報を1回のLLM呼び出しで一貫分析
 
 ### 実行方法
 
@@ -151,7 +154,12 @@ docker compose run --rm snowflake-llm python -m cli.run_agent --code 12044 --deb
        │
        ▼
 ┌──────────────┐
-│extract_issues│  課題抽出
+│ web_research │  Tavily APIによるWeb調査
+└──────┬───────┘
+       │
+       ▼
+┌──────────────┐
+│extract_issues│  課題抽出（Web調査結果も活用）
 └──────┬───────┘
        │
        ▼
@@ -181,7 +189,7 @@ docker compose run --rm snowflake-llm python -m cli.run_agent --code 12044 --deb
          │
          ▼
 ┌──────────────────┐
-│check_and_truncate│  文字数チェック・調整
+│check_and_truncate│  全体統合・品質向上・文字数調整
 └────────┬─────────┘
          │
          ▼
@@ -205,63 +213,71 @@ docker compose run --rm snowflake-llm python -m cli.run_agent --code 12044 --deb
 | **処理** | 財務分析Markdown・有報Markdownをファイルから読み込み |
 | **出力** | `financial_markdown`, `securities_markdown`, `company_info` |
 
-#### 2. extract_issues（課題抽出）
+#### 2. web_research（Web調査）
 
 | 項目 | 内容 |
 |------|------|
-| **入力** | `financial_markdown`, `securities_markdown`, `company_info` |
-| **処理** | 1回のLLM呼び出しで財務・有報から課題を統合抽出（JSON形式で出力をパース、カテゴリ別分類・重要度ソート） |
+| **入力** | `company_info`, `financial_markdown`, `securities_markdown` |
+| **処理** | LLMが企業情報を分析して5つの検索クエリを生成（地域特性・業界特性・GX・DX・人材の5観点）。Tavily APIで`search_depth="advanced"`, `include_answer="advanced"`により検索実行。AI要約付き結果を取得 |
+| **出力** | `search_queries`, `research_results`, `is_info_sufficient` |
+
+#### 3. extract_issues（課題抽出）
+
+| 項目 | 内容 |
+|------|------|
+| **入力** | `financial_markdown`, `securities_markdown`, `company_info`, `research_results` |
+| **処理** | 1回のLLM呼び出しで財務・有報・Web調査結果から課題を統合抽出（JSON形式で出力をパース、カテゴリ別分類・重要度ソート） |
 | **出力** | `issues`（課題リスト、重要度順）, `prompt_logs` |
 
-#### 3. generate_overview（企業概要・分析）
+#### 4. generate_overview（企業概要・分析）
 
 | 項目 | 内容 |
 |------|------|
-| **入力** | `financial_markdown`, `securities_markdown`, `company_info`, `EVALUATION_CRITERIA` |
-| **処理** | LLMで企業概要・外部環境・財務分析を生成（上限2,800字） |
+| **入力** | `financial_markdown`, `securities_markdown`, `research_results`, `company_info`, `EVALUATION_CRITERIA`, `SECTION_HEADING_TEMPLATES["overview"]` |
+| **処理** | LLMで企業概要・外部環境・財務分析を生成（目安2,800字、見出しテンプレートに準拠） |
 | **出力** | `sections["overview"]` |
 
-#### 4. generate_issues（課題の抽出）
+#### 5. generate_issues（課題の抽出）
 
 | 項目 | 内容 |
 |------|------|
-| **入力** | `issues`, `sections["overview"]`, `company_info`, `EVALUATION_CRITERIA` |
-| **処理** | 前セクション（overview）を参照し、論理的に接続した課題セクションを生成（上限2,300字） |
+| **入力** | `issues`, `sections["overview"]`, `research_results`, `company_info`, `EVALUATION_CRITERIA`, `SECTION_HEADING_TEMPLATES["issues"]` |
+| **処理** | 前セクション（overview）を参照し、論理的に接続した課題セクションを生成（目安2,300字、見出しテンプレートに準拠） |
 | **出力** | `sections["issues"]` |
 
-#### 5. generate_strategy（成長戦略・提案）
+#### 6. generate_strategy（成長戦略・提案）
 
 | 項目 | 内容 |
 |------|------|
-| **入力** | `issues`, `sections["issues"]`, `company_info`, `EVALUATION_CRITERIA` |
-| **処理** | 課題から論理的に導かれる成長戦略を生成（上限3,200字） |
+| **入力** | `issues`, `sections["issues"]`, `research_results`, `company_info`, `EVALUATION_CRITERIA`, `SECTION_HEADING_TEMPLATES["strategy"]` |
+| **処理** | 課題から論理的に導かれる成長戦略を生成（目安3,200字、見出しテンプレートに準拠） |
 | **出力** | `sections["strategy"]` |
 
-#### 6. generate_effects（効果試算）
+#### 7. generate_effects（効果試算）
 
 | 項目 | 内容 |
 |------|------|
-| **入力** | `issues`, `sections["strategy"]`, `financial_markdown`, `EVALUATION_CRITERIA` |
-| **処理** | 戦略の定量・定性効果を試算（上限1,800字） |
+| **入力** | `issues`, `sections["strategy"]`, `sections["overview"]`, `research_results`, `EVALUATION_CRITERIA`, `SECTION_HEADING_TEMPLATES["effects"]` |
+| **処理** | 戦略の定量・定性効果を試算（目安1,800字、見出しテンプレートに準拠、総合効果サマリー必須） |
 | **出力** | `sections["effects"]` |
 
-#### 7. generate_roadmap（ロードマップ）
+#### 8. generate_roadmap（ロードマップ）
 
 | 項目 | 内容 |
 |------|------|
-| **入力** | `issues`, `sections["strategy"]`, `EVALUATION_CRITERIA` |
-| **処理** | 5年間の実行計画・マイルストーンを生成（上限1,800字） |
+| **入力** | `issues`, `sections["strategy"]`, `research_results`, `EVALUATION_CRITERIA`, `SECTION_HEADING_TEMPLATES["roadmap"]` |
+| **処理** | 3フェーズの実行計画・マイルストーン・推進体制を生成（目安1,800字、見出しテンプレートに準拠） |
 | **出力** | `sections["roadmap"]` |
 
-#### 8. check_and_truncate（文字数調整）
+#### 9. check_and_truncate（全体統合・品質向上・文字数調整）
 
 | 項目 | 内容 |
 |------|------|
 | **入力** | `sections`（全5セクション） |
-| **処理** | 合計13,000字以内に収まるよう必要に応じてLLMで要約 |
-| **出力** | `sections`（調整済み）, `total_char_count` |
+| **処理** | 5セクションをマークダウン形式で統合し、1回のLLM呼び出しで品質向上（用語統一・冗長削除・論理接続強化・重複排除）と文字数調整（総文字数13,000字以内厳守）を実行。見出しテンプレートも統合プロンプトに埋め込み、章立て統一を二重保証 |
+| **出力** | `sections`（調整済み）, `section_char_counts` |
 
-#### 9. write_docx（DOCX出力）
+#### 10. write_docx（DOCX出力）
 
 | 項目 | 内容 |
 |------|------|
@@ -286,28 +302,40 @@ docker compose run --rm snowflake-llm python -m cli.run_agent --code 12044 --deb
 ```
 src/
 ├── common/
-│   ├── constants.py               # 定数定義（EVALUATION_CRITERIA等）
+│   ├── constants.py               # 定数定義（見出しテンプレート、文字数目安、評価基準等）
+│   ├── config.py                  # パス設定・Config管理
 │   └── debug.py                   # デバッグログ出力
 │
 ├── graph/
 │   ├── __init__.py                # パッケージエクスポート
-│   ├── proposal_agent.py          # メインエージェント（直線フロー）
+│   ├── proposal_agent.py          # メインエージェント（10ノード直線フロー）
 │   │
 │   ├── states/                    # 状態クラス
 │   │   └── proposal_state.py      # ProposalAgentState, Issue
 │   │
 │   ├── nodes/                     # ノード
 │   │   ├── load_data.py           # データ読み込み
+│   │   ├── web_research.py        # Tavily APIによるWeb調査
 │   │   ├── extract_issues.py      # 課題抽出（LLM呼び出し・JSON解析）
-│   │   ├── sections.py            # セクション生成（5セクション）
-│   │   ├── truncation.py          # 文字数制御
+│   │   ├── sections.py            # セクション生成（5セクション、見出しテンプレート適用）
+│   │   ├── truncation.py          # 全体統合・品質向上・文字数調整
 │   │   └── output.py              # DOCX出力
 │   │
 │   └── edges/
 │       └── conditionals.py        # 条件分岐（将来の拡張用）
 │
-└── proposal/
-    └── docx_writer.py             # DOCX出力処理
+├── proposal/
+│   ├── docx_writer.py             # マークダウン→DOCX変換
+│   ├── context_builder.py         # 財務・有報データ読み込み
+│   └── pdf_loader.py              # 有価証券報告書PDF解析
+│
+├── financial/
+│   ├── loader.py                  # 財務CSV読み込み
+│   ├── analyzer.py                # 財務指標計算
+│   └── metrics.py                 # 財務比率定義
+│
+└── llm/
+    └── snowflake_client.py        # LLM APIクライアント（Claude Sonnet 4.5）
 ```
 
 ### 状態管理
@@ -337,6 +365,43 @@ effects（効果試算）← strategyの施策に対する効果を試算
     ↓ 参照
 roadmap（ロードマップ）← strategyの施策を時系列で配置
 ```
+
+### セクション見出しテンプレート
+
+`constants.py`の`SECTION_HEADING_TEMPLATES`で各セクションの見出し構造を定義。全10社で統一された章立てを保証する。
+
+| セクション | ## 大見出し |
+|-----------|------------|
+| overview | 企業概要 / 外部環境分析 / 財務情報分析 |
+| issues | 財務面の課題 / 事業面の課題 / 人材・組織面の課題 |
+| strategy | 短期施策（1年以内） / 中期施策（1-3年） / 長期施策（3-5年） |
+| effects | 定量効果 / 定性的効果 / 総合効果サマリー |
+| roadmap | 実行計画 / マイルストーン / 推進体制 |
+
+見出しルール（`HEADING_RULES`）:
+- `##` で大見出し、`###` で中見出し（`####` 以下は禁止）
+- 見出しに番号（1. 2. 等）を付けない
+- `##` のテキストはテンプレート通り固定、`###` は企業固有に置き換え可
+
+適用箇所:
+1. `sections.py` — 各セクション生成プロンプトにテンプレートを埋め込み（一次生成で統一）
+2. `truncation.py` — 統合プロンプトにもテンプレートを埋め込み（二重防御）
+
+### 文字数制御
+
+| 制御段階 | ファイル | 方式 |
+|---------|---------|------|
+| セクション生成時 | `sections.py` | 目安として提示（`約○○字を目安に`） |
+| 全体統合時 | `truncation.py` | 厳守（`総文字数13,000字以内・超過不可`） |
+
+セクション別の目安文字数（`SECTION_CHAR_LIMITS`）:
+- 企業概要・分析: 約2,800字
+- 課題の抽出: 約2,300字
+- 成長戦略・提案: 約3,200字
+- 効果試算: 約1,800字
+- ロードマップ: 約1,800字
+
+LLMによるセクション個別の圧縮リトライは行わず、最終統合プロンプト1回で全体の文字数制御と品質向上を完結させる。
 
 ## LangGraph Studio（開発・デバッグ用）
 

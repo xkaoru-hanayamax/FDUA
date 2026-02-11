@@ -10,7 +10,12 @@ from typing import Any
 
 from ..states.proposal_state import ProposalAgentState
 from ...llm import call_cortex_llm
-from ...common.constants import EVALUATION_CRITERIA, SECTION_CHAR_LIMITS
+from ...common.constants import (
+    EVALUATION_CRITERIA,
+    SECTION_CHAR_LIMITS,
+    SECTION_HEADING_TEMPLATES,
+    HEADING_RULES,
+)
 from ...common.debug import debug_llm_call, debug_log
 from ...common.config import Config
 
@@ -163,28 +168,30 @@ def generate_overview(state: ProposalAgentState) -> dict[str, Any]:
     prompt = f"""【役割】
 あなたは建設業界に詳しい経営コンサルタントです。
 
+【対象企業】{company_info.get('company_name', '')}（企業コード: {company_code}、所在地: {company_info.get('location', '')}）
+
 {EVALUATION_CRITERIA}
 
 【出力形式】
-マークダウン形式で出力してください。
-- 大見出し: ## 見出し
-- 中見出し: ### 見出し
-- 箇条書き: - 項目
+マークダウン形式で出力してください。箇条書きは - を使用してください。
+{HEADING_RULES}
 
-【文字数制限】
-{SECTION_CHAR_LIMITS["overview"]}字以内で出力してください。これは厳守です。
+{SECTION_HEADING_TEMPLATES["overview"]}
 
-【作成するセクション】
-企業概要・分析
-- 企業概要（事業内容、沿革、強み）
-- 外部環境分析（業界動向、地域特性）
-- 財務情報分析（過去3年の推移と傾向）
+上記テンプレートの [角括弧] 部分を企業固有の内容に置き換えて記述してください。
+## の見出しテキストはテンプレート通りの文言を使用し、変更しないでください。
+### の見出しは企業固有の内容に置き換えてよいですが、構造（数・配置）はテンプレートに準拠してください。
+
+【文字数の目安】
+約{SECTION_CHAR_LIMITS["overview"]}字を目安に出力してください。
 
 【内容要件】
 - 具体的な数値やデータを引用すること
 - 地域特性（{company_info.get('location', '')}）を踏まえた分析を含めること
 - 業種特性（{company_info.get('industry', '')}）を踏まえた分析を含めること
 - 官公庁/民間、元請/下請の販路構成にも言及すること
+- 売上構成（完成工事高、不動産事業、商品売上等）の内訳にも言及すること
+- Web調査結果から得られた地域の最新動向（人口動態、公共事業計画、産業構造の変化）も分析に組み込むこと
 - 後続セクション（課題抽出・成長戦略）との論理的接続を意識し、分析の要点を明確にすること
 
 【参考情報】
@@ -239,22 +246,24 @@ def generate_issues(state: ProposalAgentState) -> dict[str, Any]:
     prompt = f"""【役割】
 あなたは建設業界に詳しい経営コンサルタントです。
 
+【対象企業】{company_info.get('company_name', '')}（企業コード: {company_code}、所在地: {company_info.get('location', '')}）
+
 {EVALUATION_CRITERIA}
 
 【出力形式】
-マークダウン形式で出力してください。
-- 大見出し: ## 見出し
-- 中見出し: ### 見出し
-- 箇条書き: - 項目
+マークダウン形式で出力してください。箇条書きは - を使用してください。
+{HEADING_RULES}
 
-【文字数制限】
-{SECTION_CHAR_LIMITS["issues"]}字以内で出力してください。これは厳守です。
+{SECTION_HEADING_TEMPLATES["issues"]}
 
-【作成するセクション】
-課題の抽出
-- 財務面の課題（収益性、安定性、キャッシュフロー等）
-- 事業面の課題（市場環境、競争力、技術等）
-- 人材・組織面の課題（人手不足、2024年問題、働き方改革等）
+上記テンプレートの [角括弧] 部分を企業固有の内容に置き換えて記述してください。
+## の見出しテキストはテンプレート通りの文言を使用し、変更しないでください。
+### の見出しは企業固有の内容に置き換えてよいですが、構造（数・配置）はテンプレートに準拠してください。
+各カテゴリ（財務面・事業面・人材組織面）内の ### 課題数は2-4個としてください。
+課題タイトルに【重要】を付与してよいですが、番号は付けないでください。
+
+【文字数の目安】
+約{SECTION_CHAR_LIMITS["issues"]}字を目安に出力してください。
 
 【企業概要・分析（前セクション）】
 {overview_section}
@@ -276,6 +285,7 @@ def generate_issues(state: ProposalAgentState) -> dict[str, Any]:
 - 財務データから具体的な根拠を示すこと
 - 建設業界共通の課題（GX/DX、人材不足、2024年問題）と照らし合わせること
 - 地域特性（{company_info.get('location', '')}）に起因する課題も検討すること
+- Web調査結果から判明した外部環境の変化（地域需要、業界トレンド、GX/DX動向）を課題の根拠として活用すること
 - 各課題の優先度・重要度も示すこと
 
 【参考情報】
@@ -321,51 +331,43 @@ def generate_strategy(state: ProposalAgentState) -> dict[str, Any]:
     sections = state.get("sections", {})
     issues_section = sections.get("issues", "")
     issues = state.get("issues", [])
-    insights = state.get("insights", [])
     logs: list[dict] = []
 
     # 構造化された課題データを活用
     issues_by_priority = _format_issues_by_priority(issues)
     high_priority_issues = "\n".join([f"- {i}" for i in issues_by_priority["high"]]) or "（なし）"
 
-    # 知見がある場合のみ含める
-    insights_section = ""
-    if insights:
-        insights_text = "\n".join([f"- {insight}" for insight in insights])
-        insights_section = f"""
-【調査から得られた知見】
-{insights_text}
-"""
-
     prompt = f"""【役割】
 あなたは建設業界に詳しい経営コンサルタントです。
+
+【対象企業】{company_info.get('company_name', '')}（企業コード: {company_code}、所在地: {company_info.get('location', '')}）
 
 {EVALUATION_CRITERIA}
 
 【出力形式】
-マークダウン形式で出力してください。
-- 大見出し: ## 見出し
-- 中見出し: ### 見出し
-- 箇条書き: - 項目
+マークダウン形式で出力してください。箇条書きは - を使用してください。
+{HEADING_RULES}
 
-【文字数制限】
-{SECTION_CHAR_LIMITS["strategy"]}字以内で出力してください。これは厳守です。
+{SECTION_HEADING_TEMPLATES["strategy"]}
 
-【作成するセクション】
-成長戦略・提案
-- 短期施策（1年以内）：即効性のある改善策
-- 中期施策（1-3年）：競争力強化策
-- 長期施策（3-5年）：持続的成長に向けた投資
+上記テンプレートの [角括弧] 部分を企業固有の内容に置き換えて記述してください。
+## の見出しテキストはテンプレート通りの文言を使用し、変更しないでください。
+### の見出しは企業固有の内容に置き換えてよいですが、構造（数・配置）はテンプレートに準拠してください。
+各時間軸内の ### 施策数は2-4個としてください。
+
+【文字数の目安】
+約{SECTION_CHAR_LIMITS["strategy"]}字を目安に出力してください。
 
 【最優先で対応すべき課題（重要度: high）】
 {high_priority_issues}
 
 【課題の抽出結果（前セクション）】
 {issues_section}
-{insights_section}
+
 【重要】
 上記の課題から論理的に導かれる成長戦略を提案すること。
 課題と戦略の因果関係を明確にし、「過去分析→課題→未来提案」の一貫性を確保すること。
+参考情報に含まれるWeb調査結果（地域動向・GX/DX・人材市場等のAI要約）を戦略立案の根拠として活用すること。
 
 【内容要件】
 - 最優先課題に対応する具体的な施策を提案すること
@@ -373,6 +375,8 @@ def generate_strategy(state: ProposalAgentState) -> dict[str, Any]:
 - DX（ICT施工、BIM/CIM、省力化）への対応策を含めること
 - 人材確保・育成策（2024年問題対応、外国人材活用等）を含めること
 - 地域特性（{company_info.get('location', '')}）を活かした戦略を提案すること
+- 参考情報に含まれるWeb調査結果（地域動向・GX/DX・人材市場等）を戦略立案の根拠として活用すること
+- 各施策には想定投資額の目安と期待される効果を簡潔に付記すること
 - 実現可能性の高い具体的な施策とすること
 
 【参考情報】
@@ -412,9 +416,11 @@ def generate_effects(state: ProposalAgentState) -> dict[str, Any]:
 
     context = _build_context(state)
     company_code = state["company_code"]
+    company_info = state.get("company_info", {})
     config_dict = state.get("config", {})
     sections = state.get("sections", {})
     strategy_section = sections.get("strategy", "")
+    overview_section = sections.get("overview", "")
     issues = state.get("issues", [])
     logs: list[dict] = []
 
@@ -424,21 +430,26 @@ def generate_effects(state: ProposalAgentState) -> dict[str, Any]:
     prompt = f"""【役割】
 あなたは建設業界に詳しい経営コンサルタントです。
 
+【対象企業】{company_info.get('company_name', '')}（企業コード: {company_code}、所在地: {company_info.get('location', '')}）
+
 {EVALUATION_CRITERIA}
 
 【出力形式】
-マークダウン形式で出力してください。
-- 大見出し: ## 見出し
-- 中見出し: ### 見出し
-- 箇条書き: - 項目
+マークダウン形式で出力してください。箇条書きは - を使用してください。
+{HEADING_RULES}
 
-【文字数制限】
-{SECTION_CHAR_LIMITS["effects"]}字以内で出力してください。これは厳守です。
+{SECTION_HEADING_TEMPLATES["effects"]}
 
-【作成するセクション】
-効果試算
-- 売上・利益への影響（定量効果）
-- 定性的効果（ブランド、人材、技術力等）
+上記テンプレートの [角括弧] 部分を企業固有の内容に置き換えて記述してください。
+## の見出しテキストはテンプレート通りの文言を使用し、変更しないでください。
+### の見出しは企業固有の内容に置き換えてよいですが、構造（数・配置）はテンプレートに準拠してください。
+「## 総合効果サマリー」は必ず含めてください。
+
+【文字数の目安】
+約{SECTION_CHAR_LIMITS["effects"]}字を目安に出力してください。
+
+【企業概要・財務分析（効果試算のベースライン）】
+{overview_section}
 
 【提案した成長戦略】
 {strategy_section}
@@ -491,6 +502,7 @@ def generate_roadmap(state: ProposalAgentState) -> dict[str, Any]:
 
     context = _build_context(state)
     company_code = state["company_code"]
+    company_info = state.get("company_info", {})
     config_dict = state.get("config", {})
     sections = state.get("sections", {})
     strategy_section = sections.get("strategy", "")
@@ -499,37 +511,49 @@ def generate_roadmap(state: ProposalAgentState) -> dict[str, Any]:
 
     # 重要課題を施策の優先順位付けに活用
     issues_by_priority = _format_issues_by_priority(issues)
-    high_priority_summary = ", ".join(issues_by_priority["high"][:3]) if issues_by_priority["high"] else "（なし）"
+    high_priority_summary = ", ".join(issues_by_priority["high"][:5]) if issues_by_priority["high"] else "（なし）"
+    medium_priority_summary = ", ".join(issues_by_priority["medium"][:3]) if issues_by_priority["medium"] else ""
+
+    # 中程度の課題セクション（存在する場合のみ）
+    medium_section = ""
+    if medium_priority_summary:
+        medium_section = f"""
+【中程度の優先課題（フェーズ2以降で対応）】
+{medium_priority_summary}
+"""
 
     prompt = f"""【役割】
 あなたは建設業界に詳しい経営コンサルタントです。
 
+【対象企業】{company_info.get('company_name', '')}（企業コード: {company_code}、所在地: {company_info.get('location', '')}）
+
 {EVALUATION_CRITERIA}
 
 【出力形式】
-マークダウン形式で出力してください。
-- 大見出し: ## 見出し
-- 中見出し: ### 見出し
-- 箇条書き: - 項目
+マークダウン形式で出力してください。箇条書きは - を使用してください。
+{HEADING_RULES}
 
-【文字数制限】
-{SECTION_CHAR_LIMITS["roadmap"]}字以内で出力してください。これは厳守です。
+{SECTION_HEADING_TEMPLATES["roadmap"]}
 
-【作成するセクション】
-ロードマップ
-- 実行計画（フェーズ別の取り組み内容）
-- マイルストーン（重要な節目と達成目標）
+上記テンプレートの [角括弧] 部分を企業固有の内容に置き換えて記述してください。
+## の見出しテキストはテンプレート通りの文言を使用し、変更しないでください。
+### の見出しは企業固有の内容に置き換えてよいですが、構造（数・配置）はテンプレートに準拠してください。
+フェーズは必ず3つとしてください。「## マイルストーン」と「## 推進体制」は必ず含めてください。
+
+【文字数の目安】
+約{SECTION_CHAR_LIMITS["roadmap"]}字を目安に出力してください。
 
 【提案した成長戦略】
 {strategy_section}
 
 【最優先で対応すべき課題（ロードマップの優先順位付けに活用）】
 {high_priority_summary}
-
+{medium_section}
 【内容要件】
 - 5年間の実行計画を示すこと
 - 年度ごとの主要施策とKPIを明確にすること
 - 最優先課題に対応する施策を初期フェーズに配置すること
+- 中程度の課題はフェーズ2以降に配置すること
 - 優先順位と依存関係を考慮した実行順序を示すこと
 - 推進体制や必要なリソースにも言及すること
 

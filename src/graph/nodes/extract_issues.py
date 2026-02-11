@@ -77,6 +77,19 @@ def extract_issues(state: ProposalAgentState) -> dict[str, Any]:
 
     logs: list[dict] = []
 
+    # Web調査結果を構築
+    research_text = ""
+    if state.get("research_results"):
+        for key, value in state["research_results"].items():
+            research_text += f"\n{value}"
+
+    research_section = ""
+    if research_text.strip():
+        research_section = f"""
+【Web調査結果（地域特性・業界動向・GX/DX・人材等の最新情報）】
+{research_text}
+"""
+
     prompt = f"""【役割】
 あなたは建設業界に詳しい経営コンサルタント兼財務アナリストです。
 財務データと有価証券報告書を統合的に分析し、企業の課題を抽出してください。
@@ -90,7 +103,7 @@ def extract_issues(state: ProposalAgentState) -> dict[str, Any]:
     "category": "財務/事業/組織・人材/外部環境/GX・DX",
     "description": "課題の説明",
     "severity": "high/medium/low",
-    "source": "財務/有報/両方",
+    "source": "財務/有報/両方/Web調査",
     "evidence": "根拠となる数値データや記述"
   }}
 ]
@@ -108,6 +121,10 @@ def extract_issues(state: ProposalAgentState) -> dict[str, Any]:
 7. 外部環境の課題（地域の建設需要、規制対応）
 8. GX/DX対応の課題（環境技術、デジタル化）
 
+■ 外部環境（Web調査結果から）
+9. 地域の建設市場動向・人口動態に基づく需要リスク
+10. GX/DX対応の業界水準との乖離
+
 【抽出数】
 最低6つ、最大10の課題を抽出すること。
 財務面と事業・組織面をバランスよく含めること。
@@ -122,7 +139,7 @@ def extract_issues(state: ProposalAgentState) -> dict[str, Any]:
 
 【有価証券報告書】
 {securities_markdown}
-"""
+{research_section}"""
 
     response = _call_llm_with_log(prompt, "統合課題抽出", logs)
     all_issues = _parse_issues_json(response)
